@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Button from "./ui/Button.jsx";
 import { renderMarkdown } from "../lib/markdown.js";
-import { useToast } from "../hooks/useToast.js";
+import { useToast } from "../hooks/useToast.jsx";
 import { apiCreateBlock } from "../api/cloudflare.js";
 
 export default function BlockEditor({ onCreated }) {
