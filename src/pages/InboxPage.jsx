@@ -8,7 +8,10 @@ import {
 import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
-import { looksLikeTitleUnsupported } from "../lib/blockText.js";
+import {
+  looksLikeTitleUnsupported,
+  looksLikeEmptyContentRejected
+} from "../lib/apiErrors.js";
 
 export default function InboxPage() {
   const toast = useToast();
@@ -17,7 +20,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
 
-  // 初始化
+  // 初始化拉取
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -29,25 +32,21 @@ export default function InboxPage() {
           if (list.length) setSelectedId(list[list.length - 1].id);
         }
       } catch (e) {
-        toast.push(e.message, { type: "error" });
+        toast.push(e.message || "加载失败", { type: "error" });
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [toast]);
 
   const selected = useMemo(
-    () => blocks.find(b => b.id === selectedId),
+    () => blocks.find(b => b.id === selectedId) || null,
     [blocks, selectedId]
   );
 
   function optimisticChange(id, patch) {
-    setBlocks(prev =>
-      prev.map(b => (b.id === id ? { ...b, ...patch } : b))
-    );
+    setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)));
   }
 
   async function safeUpdate(id, payload, originalError) {
@@ -67,7 +66,7 @@ export default function InboxPage() {
   }
 
   async function createEmptyBlock() {
-    // 乐观 block
+    // 1. 添加乐观 block
     const optimistic = {
       id: "tmp-" + Date.now(),
       title: "",
@@ -78,24 +77,63 @@ export default function InboxPage() {
     };
     setBlocks(prev => [...prev, optimistic]);
     setSelectedId(optimistic.id);
+
     try {
       let real;
+      // 尝试 1：空内容 + 空标题
       try {
         real = await apiCreateBlock("", "");
-      } catch (e) {
-        if (looksLikeTitleUnsupported(e)) {
-          real = await apiCreateBlock("");
-        } else throw e;
+      } catch (e1) {
+        // 尝试 2：title 不支持
+        if (looksLikeTitleUnsupported(e1)) {
+          try {
+            real = await apiCreateBlock("");
+          } catch (e2) {
+            // 尝试 3：如果空内容被拒绝，用一个占位空格
+            if (looksLikeEmptyContentRejected(e2)) {
+              try {
+                real = await apiCreateBlock(" ");
+              } catch (e3) {
+                // （可选）尝试发送 text 字段（如果后端接口命名不同）
+                // try { real = await apiFetchFallbackTextField(" "); } catch(_) {}
+                throw e3;
+              }
+            } else {
+              throw e2;
+            }
+          }
+        }
+        // 如果不是 title 不支持，检查是否空内容被拒绝
+        else if (looksLikeEmptyContentRejected(e1)) {
+          try {
+            real = await apiCreateBlock(" ");
+          } catch (e4) {
+            throw e4;
+          }
+        } else {
+          throw e1;
+        }
       }
+
+      // 校验 real
+      if (!real || !real.id) {
+        throw new Error("创建接口返回数据不完整");
+      }
+
+      // 替换乐观 block
       setBlocks(prev =>
         prev.map(b => (b.id === optimistic.id ? real : b))
       );
       setSelectedId(real.id);
-    } catch (e) {
-      toast.push(e.message || "创建失败", { type: "error" });
+    } catch (err) {
       // 回滚
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
-      if (selectedId === optimistic.id) setSelectedId(null);
+      if (selectedId === optimistic.id) {
+        // 选择回最后一个真实 block
+        const realList = blocks.filter(b => b.id !== optimistic.id);
+        setSelectedId(realList.length ? realList[realList.length - 1].id : null);
+      }
+      toast.push(err.message || "创建失败", { type: "error" });
     }
   }
 
@@ -110,8 +148,8 @@ export default function InboxPage() {
         setSelectedId(remain.length ? remain[remain.length - 1].id : null);
       }
     } catch (e) {
-      toast.push(e.message, { type: "error" });
-      setBlocks(snapshot); // 回滚
+      toast.push(e.message || "删除失败", { type: "error" });
+      setBlocks(snapshot);
     }
   }
 
