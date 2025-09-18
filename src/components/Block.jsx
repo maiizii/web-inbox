@@ -1,79 +1,110 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { apiUpdateBlock, apiDeleteBlock } from "../api/cloudflare.js";
+import { renderMarkdown } from "../lib/markdown.js";
+import Button from "./ui/Button.jsx";
+import { useToast } from "../hooks/useToast.js";
 
 export default function Block({ block, onChanged, onDeleted }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(block.content);
+  const [preview, setPreview] = useState("");
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
+  const toast = useToast();
+
+  useEffect(() => {
+    setPreview(renderMarkdown(editing ? value : block.content));
+  }, [block.content, value, editing]);
 
   async function save() {
+    if (!value.trim()) return;
     setSaving(true);
-    setErr("");
     try {
+      // 乐观
+      const prev = block.content;
+      onChanged && onChanged({ ...block, content: value, optimistic: true });
       const updated = await apiUpdateBlock(block.id, value);
       onChanged && onChanged(updated);
       setEditing(false);
+      toast.push("已保存", { type: "success" });
     } catch (e) {
-      setErr(e.message);
+      toast.push(e.message, { type: "error" });
     } finally {
       setSaving(false);
     }
   }
 
   async function remove() {
-    if (!confirm("确认删除？")) return;
+    if (!confirm("确认删除该块？")) return;
     try {
+      onDeleted && onDeleted(block.id, { optimistic: true });
       await apiDeleteBlock(block.id);
-      onDeleted && onDeleted(block.id);
+      toast.push("已删除", { type: "success" });
     } catch (e) {
-      alert(e.message);
+      toast.push(e.message, { type: "error" });
     }
   }
 
   return (
-    <div className="border rounded p-3 bg-white shadow-sm space-y-2">
+    <div
+      className={`card p-4 space-y-3 relative ${
+        block.optimistic ? "opacity-60 pointer-events-none" : ""
+      }`}
+    >
+      <div className="text-xs text-slate-400 flex justify-between">
+        <span>{new Date(block.created_at).toLocaleString()}</span>
+        {block.updated_at && (
+          <span className="italic">
+            {block.updated_at !== block.created_at && "已修改"}
+          </span>
+        )}
+      </div>
       {editing ? (
         <textarea
-          className="w-full border rounded p-2 h-24"
+          className="textarea"
           value={value}
           onChange={e => setValue(e.target.value)}
         />
       ) : (
-        <div className="whitespace-pre-wrap text-sm">{block.content}</div>
+        <div
+          className="prose prose-sm dark:prose-invert max-w-none"
+          dangerouslySetInnerHTML={{ __html: preview }}
+        />
       )}
-      {err && <div className="text-xs text-red-600">{err}</div>}
-      <div className="flex gap-2 text-sm">
+      <div className="flex gap-2 justify-end">
         {editing ? (
           <>
-            <button
+            <Button
+              type="button"
               onClick={save}
               disabled={saving}
-              className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
             >
-              保存
-            </button>
-            <button
-              onClick={() => { setEditing(false); setValue(block.content); }}
-              className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"
+              {saving ? "保存中..." : "保存"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setEditing(false);
+                setValue(block.content);
+              }}
             >
               取消
-            </button>
+            </Button>
           </>
         ) : (
-          <button
-            onClick={() => setEditing(true)}
-            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            编辑
-          </button>
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditing(true)}
+            >
+              编辑
+            </Button>
+            <Button type="button" variant="outline" onClick={remove}>
+              删除
+            </Button>
+          </>
         )}
-        <button
-          onClick={remove}
-          className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 ml-auto"
-        >
-          删除
-        </button>
       </div>
     </div>
   );
