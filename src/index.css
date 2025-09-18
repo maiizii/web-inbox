@@ -505,16 +505,17 @@ textarea {
 
 
 /* ============ Markdown 空行占位 ============ */
-.prose .md-empty-line {
-  height: 0.9rem;
+/* 预览中保留多空行：每个 <md-blank> = 原始一行空行 */
+.prose md-blank {
+  display: block;
+  height: 0.9rem;     /* 调整空行视觉高度 */
   line-height: 0.9rem;
   margin: 0;
   padding: 0;
   pointer-events: none;
   user-select: none;
-  opacity: 0; /* 只留空间；调试可改成 .4 看占位 */
+  /* 如需调试可加背景: background:rgba(0,0,255,.05); */
 }
-.dark .prose .md-empty-line { opacity: 0; }
 
 /* ============ 行号编辑器（对齐修正版） ============ */
 .editor-wrapper {
