@@ -504,17 +504,20 @@ textarea {
 }
 
 
-/* 追加 / 更新：Markdown 多空行显示 */
+/* ============ 多空行保留（Markdown 预览）=========== */
 .prose p.md-empty-line {
   margin: 0;
   line-height: 1;
-  height: 0.9rem;
+  height: 0.9rem; /* 可调节空行视觉高度 */
   pointer-events: none;
   user-select: none;
-  opacity: .6;
+  opacity: .55;
+}
+.dark .prose p.md-empty-line {
+  opacity: .65;
 }
 
-/* 行号编辑器（BlockEditorAuto） */
+/* ============ 带行号编辑器样式（若已存在则覆盖）=========== */
 .editor-wrapper {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
   position: relative;
@@ -522,53 +525,49 @@ textarea {
   display: flex;
   flex-direction: column;
 }
-
 .editor-code-area {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
-  overflow: hidden; /* 防止双滚动条 */
+  overflow: hidden;
   background: transparent;
 }
-
 .editor-line-numbers {
-  counter-reset: line;
-  padding: 8px 6px 8px 8px;
-  font-size: 12px;
+  position: relative;
+  padding: 6px 6px 6px 8px;
+  font-size: 13px;
   line-height: 1.4;
   color: #94a3b8;
   text-align: right;
   user-select: none;
-  min-width: 3.2rem;
+  min-width: 3.1rem;
   border-right: 1px solid #e2e8f0;
   background: transparent;
   box-sizing: border-box;
   font-family: inherit;
-  position: relative;
+  overflow: hidden; /* 自己不滚动，内部通过 transform 同步 */
 }
-
 .dark .editor-line-numbers {
   border-color: #334155;
   color: #64748b;
 }
-
 .editor-line-numbers-inner {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  padding-right: 6px;
-  padding-left: 0;
   white-space: pre;
+  padding-right: 4px;
+  padding-left: 0;
+  font-variant-numeric: tabular-nums;
 }
-
 .editor-textarea {
   flex: 1;
   border: none;
   outline: none;
   resize: none;
-  padding: 8px 12px;
+  padding: 6px 12px;
   font-size: 13px;
   line-height: 1.4;
   background: transparent;
@@ -577,13 +576,8 @@ textarea {
   overflow: auto;
   tab-size: 2;
 }
-
 .editor-textarea:focus {
   outline: none;
-}
-
-.dark .editor-textarea {
-  color: #e2e8f0;
 }
 
 .editor-textarea::-webkit-scrollbar {
