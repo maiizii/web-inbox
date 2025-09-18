@@ -6,36 +6,28 @@ marked.setOptions({
   breaks: true
 });
 
-// 占位符（避免 markdown 语义触发，使用纯大写+数字+下划线）
-const BLANK_TOKEN = "MD_BLK_LINE_X7_TOKEN";
-const BLANK_P_REGEX = new RegExp(`<p>${BLANK_TOKEN}</p>`, "g");
-
-/**
- * 兼容宽松图片语法：允许 ] 与 ( 之间出现空白
- * 例: ![alt] (/path)  -> ![alt](/path)
- */
+// 兼容：![alt] (/path)  => ![alt](/path)
 function normalizeLooseImageSyntax(raw = "") {
   return raw.replace(/!\[([^\]]*?)\]\s+\(/g, (_m, alt) => `![${alt}](`);
 }
 
 /**
- * 将 非代码围栏 中的每一条“纯空行”都替换成占位符行。
- * 这样每个空行都会在 markdown 解析后成为一个 <p>...</p>，
- * 再统一替换为视觉空行段落。
+ * 将“非代码围栏”里的所有纯空行替换成 <md-blank></md-blank>
+ * - 代码围栏内不动
+ * - 连续 N 个空行 => N 个 <md-blank>，1:1
  */
-function tagEveryBlankLine(raw = "") {
+function replaceBlankLines(raw = "") {
   const lines = raw.replace(/\r/g, "").split("\n");
   let inFence = false;
   return lines
     .map(line => {
       const trimmed = line.trim();
-      // 代码围栏开关
       if (/^(```|~~~)/.test(trimmed)) {
         inFence = !inFence;
-        return line;
+        return line; // 保留围栏分隔行
       }
       if (!inFence && trimmed === "") {
-        return BLANK_TOKEN;
+        return "<md-blank></md-blank>";
       }
       return line;
     })
@@ -45,17 +37,12 @@ function tagEveryBlankLine(raw = "") {
 export function renderMarkdown(raw = "") {
   try {
     const step1 = normalizeLooseImageSyntax(raw || "");
-    const staged = tagEveryBlankLine(step1);
+    const staged = replaceBlankLines(step1);
     let html = marked.parse(staged);
+    // 允许自定义标签 md-blank
     html = DOMPurify.sanitize(html, {
-      ADD_TAGS: ["p"],          // p 默认允许，这里显式列出以示意
-      ADD_ATTR: ["class", "data-empty-line"]
+      ADD_TAGS: ["md-blank"]
     });
-    // 将占位 <p> 替换为空行段落
-    html = html.replace(
-      BLANK_P_REGEX,
-      `<p class="md-empty-line" data-empty-line="true">&nbsp;</p>`
-    );
     return html;
   } catch {
     return raw;
