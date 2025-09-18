@@ -503,14 +503,105 @@ textarea {
   line-height:1.3;
 }
 
-/* 追加：多空行在 Markdown 预览中的保留样式 */
+
+/* 追加 / 更新：Markdown 多空行显示 */
 .prose p.md-empty-line {
   margin: 0;
   line-height: 1;
-  height: 0.9rem; /* 可调节：多空行的视觉高度 */
+  height: 0.9rem;
   pointer-events: none;
   user-select: none;
+  opacity: .6;
 }
-.dark .prose p.md-empty-line {
-  opacity: .85;
+
+/* 行号编辑器（BlockEditorAuto） */
+.editor-wrapper {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-code-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden; /* 防止双滚动条 */
+  background: transparent;
+}
+
+.editor-line-numbers {
+  counter-reset: line;
+  padding: 8px 6px 8px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #94a3b8;
+  text-align: right;
+  user-select: none;
+  min-width: 3.2rem;
+  border-right: 1px solid #e2e8f0;
+  background: transparent;
+  box-sizing: border-box;
+  font-family: inherit;
+  position: relative;
+}
+
+.dark .editor-line-numbers {
+  border-color: #334155;
+  color: #64748b;
+}
+
+.editor-line-numbers-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding-right: 6px;
+  padding-left: 0;
+  white-space: pre;
+}
+
+.editor-textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  overflow: auto;
+  tab-size: 2;
+}
+
+.editor-textarea:focus {
+  outline: none;
+}
+
+.dark .editor-textarea {
+  color: #e2e8f0;
+}
+
+.editor-textarea::-webkit-scrollbar {
+  width: 10px;
+}
+.editor-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+.editor-textarea::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 5px;
+}
+.dark .editor-textarea::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+.editor-textarea::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+.dark .editor-textarea::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
