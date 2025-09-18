@@ -5,7 +5,7 @@ import AuthPage from "./pages/AuthPage.jsx";
 import InboxPage from "./pages/InboxPage.jsx";
 import Layout from "./components/layout/Layout.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
-import { ToastProvider } from "./hooks/useToast.js";
+import { ToastProvider } from "./hooks/useToast.jsx";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
