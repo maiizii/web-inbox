@@ -19,20 +19,23 @@ export default function BlockEditorAuto({
   const [showPreview, setShowPreview] = useState(true);
   const [titleManuallyEdited, setTitleManuallyEdited] = useState(false);
   const textareaRef = useRef(null);
+  const lineNumbersRef = useRef(null);
   const lastPersisted = useRef({ title: "", content: "" });
   const [previewHtml, setPreviewHtml] = useState("");
 
-  // 焦点/光标保持
+  // 焦点 / 光标
   const userManuallyBlurredRef = useRef(false);
   const shouldRestoreFocusRef = useRef(false);
   const selectionRef = useRef({ start: null, end: null });
 
+  // 预览
   useEffect(() => {
     if (showPreview) {
       setPreviewHtml(renderMarkdown(content));
     }
   }, [content, showPreview]);
 
+  // Block 切换
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
@@ -46,7 +49,7 @@ export default function BlockEditorAuto({
     shouldRestoreFocusRef.current = false;
   }, [block?.id]);
 
-  // 自动派生标题（保留原逻辑）
+  // 自动标题
   useEffect(() => {
     if (!block) return;
     if (!titleManuallyEdited && !title && content) {
@@ -59,6 +62,7 @@ export default function BlockEditorAuto({
     (title !== lastPersisted.current.title ||
       content !== lastPersisted.current.content);
 
+  // 光标
   function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -122,16 +126,25 @@ export default function BlockEditorAuto({
     userManuallyBlurredRef.current = true;
     flushSave();
   }
-
   function onTitleFocus() {
     userManuallyBlurredRef.current = false;
     shouldRestoreFocusRef.current = true;
   }
-
   function onContentFocus() {
     userManuallyBlurredRef.current = false;
     shouldRestoreFocusRef.current = true;
     captureSel();
+  }
+
+  // 行号
+  const lineCount = content.split("\n").length || 1;
+  const lineNumbersString = Array.from({ length: lineCount }, (_, i) => i + 1).join("\n");
+
+  // 同步滚动（行号跟随）
+  function onTextareaScroll(e) {
+    if (lineNumbersRef.current) {
+      lineNumbersRef.current.style.transform = `translateY(-${e.target.scrollTop}px)`;
+    }
   }
 
   function insertAtCursor(text) {
@@ -229,6 +242,7 @@ export default function BlockEditorAuto({
       onDrop={handleDrop}
       onDragOver={e => e.preventDefault()}
     >
+      {/* 顶部工具栏 */}
       <div className="flex items-center gap-3 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
         <input
           className="text-xl font-semibold bg-transparent outline-none flex-1 placeholder-slate-400"
@@ -251,7 +265,7 @@ export default function BlockEditorAuto({
           >
             {showPreview ? "隐藏预览" : "显示预览"}
           </button>
-          <div className="text-slate-400 select-none min-w-[56px] text-right">
+            <div className="text-slate-400 select-none min-w-[56px] text-right">
             {saving
               ? "保存中..."
               : error
@@ -271,29 +285,44 @@ export default function BlockEditorAuto({
         </div>
       </div>
 
+      {/* 主体区域 */}
       <div className="flex-1 flex min-h-0">
+        {/* 编辑器 */}
         <div className={"flex-1 flex flex-col " + (showPreview ? "w-1/2" : "w-full")}>
-          {/* 外层增加 overflow-auto 以便在高度固定时可滚动 */}
-          <div className="flex-1 min-h-0 overflow-auto">
-            <textarea
-              ref={textareaRef}
-              className="w-full h-full min-h-[400px] p-4 outline-none bg-transparent font-mono text-sm leading-5 custom-scroll resize-none overflow-auto"
-              value={content}
-              placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
-              disabled={block.optimistic}
-              onChange={e => {
-                setContent(e.target.value);
-                shouldRestoreFocusRef.current = true;
-                userManuallyBlurredRef.current = false;
-                captureSel();
-              }}
-              onFocus={onContentFocus}
-              onClick={captureSel}
-              onKeyUp={captureSel}
-              onBlur={onBlur}
-            />
+          <div className="editor-wrapper">
+            <div className="editor-code-area">
+              <div className="editor-line-numbers">
+                <pre
+                  ref={lineNumbersRef}
+                  className="editor-line-numbers-inner"
+                  aria-hidden="true"
+                >
+                  {lineNumbersString}
+                </pre>
+              </div>
+              <textarea
+                ref={textareaRef}
+                className="editor-textarea custom-scroll"
+                value={content}
+                placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
+                disabled={block.optimistic}
+                onChange={e => {
+                  setContent(e.target.value);
+                  shouldRestoreFocusRef.current = true;
+                  userManuallyBlurredRef.current = false;
+                  captureSel();
+                }}
+                onScroll={onTextareaScroll}
+                onFocus={onContentFocus}
+                onClick={captureSel}
+                onKeyUp={captureSel}
+                onBlur={onBlur}
+              />
+            </div>
           </div>
         </div>
+
+        {/* 预览 */}
         {showPreview && (
           <div className="w-1/2 border-l border-slate-200 dark:border-slate-700 overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert">
             <div
