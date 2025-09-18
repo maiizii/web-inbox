@@ -3,18 +3,15 @@ import {
   apiListBlocks,
   apiCreateBlock,
   apiUpdateBlock,
-  apiDeleteBlock,
-  apiHealth,
-  apiMe
+  apiDeleteBlock
 } from "../api/cloudflare.js";
 import { useToast } from "../hooks/useToast.jsx";
-import { useAuth } from "../context/AuthContext.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
+import { looksLikeTitleUnsupported } from "../lib/blockText.js";
 
 export default function InboxPage() {
   const toast = useToast();
-  const { user } = useAuth();
   const [blocks, setBlocks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -45,6 +42,29 @@ export default function InboxPage() {
     [blocks, selectedId]
   );
 
+  function optimisticChange(id, patch) {
+    setBlocks(prev =>
+      prev.map(b => (b.id === id ? { ...b, ...patch } : b))
+    );
+  }
+
+  async function safeUpdate(id, payload, originalError) {
+    if (looksLikeTitleUnsupported(originalError)) {
+      // 重试不带 title
+      const { title: _ignore, ...rest } = payload;
+      const real = await apiUpdateBlock(id, rest);
+      setBlocks(prev => prev.map(b => (b.id === id ? real : b)));
+      return real;
+    }
+    throw originalError;
+  }
+
+  async function persistUpdate(id, payload) {
+    const real = await apiUpdateBlock(id, payload);
+    setBlocks(prev => prev.map(b => (b.id === id ? real : b)));
+    return real;
+  }
+
   async function createEmptyBlock() {
     const optimistic = {
       id: "tmp-" + Date.now(),
@@ -57,49 +77,39 @@ export default function InboxPage() {
     setBlocks(prev => [...prev, optimistic]);
     setSelectedId(optimistic.id);
     try {
-      const real = await apiCreateBlock("", "");
+      let real;
+      try {
+        real = await apiCreateBlock("", "");
+      } catch (e) {
+        if (looksLikeTitleUnsupported(e)) {
+          real = await apiCreateBlock("");
+        } else throw e;
+      }
       setBlocks(prev =>
         prev.map(b => (b.id === optimistic.id ? real : b))
       );
       setSelectedId(real.id);
     } catch (e) {
       toast.push(e.message, { type: "error" });
+      // 回滚
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
       if (selectedId === optimistic.id) setSelectedId(null);
     }
   }
 
-  function optimisticChange(id, patch) {
-    setBlocks(prev =>
-      prev.map(b => (b.id === id ? { ...b, ...patch } : b))
-    );
-  }
-
-  async function persistUpdate(id, payload) {
-    try {
-      const real = await apiUpdateBlock(id, payload);
-      setBlocks(prev =>
-        prev.map(b => (b.id === id ? real : b))
-      );
-    } catch (e) {
-      toast.push(e.message, { type: "error" });
-      throw e;
-    }
-  }
-
   async function deleteBlock(id) {
-    const backup = blocks;
+    const snapshot = blocks;
     setBlocks(prev => prev.filter(b => b.id !== id));
     try {
       await apiDeleteBlock(id);
       toast.push("已删除", { type: "success" });
       if (selectedId === id) {
-        const remaining = backup.filter(b => b.id !== id);
-        setSelectedId(remaining.length ? remaining[remaining.length - 1].id : null);
+        const remain = snapshot.filter(b => b.id !== id);
+        setSelectedId(remain.length ? remain[remain.length - 1].id : null);
       }
     } catch (e) {
       toast.push(e.message, { type: "error" });
-      setBlocks(backup); // 回滚
+      setBlocks(snapshot); // 回滚
     }
   }
 
@@ -124,7 +134,7 @@ export default function InboxPage() {
         <div className="border-b border-slate-200 dark:border-slate-700 px-4 h-11 flex items-center gap-3">
           <input
             className="input !h-8 text-sm w-64"
-            placeholder="搜索标题 / 内容..."
+            placeholder="搜索..."
             value={q}
             onChange={e => setQ(e.target.value)}
           />
@@ -138,6 +148,7 @@ export default function InboxPage() {
             onChange={optimisticChange}
             onDelete={deleteBlock}
             onImmediateSave={persistUpdate}
+            safeUpdateFallback={safeUpdate}
           />
         </div>
       </main>
