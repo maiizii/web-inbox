@@ -34,7 +34,9 @@ export default function InboxPage() {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [toast]);
 
   const selected = useMemo(
@@ -50,7 +52,6 @@ export default function InboxPage() {
 
   async function safeUpdate(id, payload, originalError) {
     if (looksLikeTitleUnsupported(originalError)) {
-      // 重试不带 title
       const { title: _ignore, ...rest } = payload;
       const real = await apiUpdateBlock(id, rest);
       setBlocks(prev => prev.map(b => (b.id === id ? real : b)));
@@ -66,6 +67,7 @@ export default function InboxPage() {
   }
 
   async function createEmptyBlock() {
+    // 乐观 block
     const optimistic = {
       id: "tmp-" + Date.now(),
       title: "",
@@ -90,7 +92,7 @@ export default function InboxPage() {
       );
       setSelectedId(real.id);
     } catch (e) {
-      toast.push(e.message, { type: "error" });
+      toast.push(e.message || "创建失败", { type: "error" });
       // 回滚
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
       if (selectedId === optimistic.id) setSelectedId(null);
