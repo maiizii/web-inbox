@@ -33,9 +33,7 @@ export async function apiHealth() {
 
 /**
  * Blocks
- * - 后端若暂不支持 title，会忽略该字段；前端已做兼容。
  */
-
 export async function apiListBlocks() {
   const r = await apiFetch("/api/blocks");
   return r.blocks || [];
