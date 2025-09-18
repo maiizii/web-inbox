@@ -1,7 +1,7 @@
 import { apiFetch } from "../lib/apiClient.js";
 
 /**
- * Auth APIs
+ * Auth APIs（保持不变）
  */
 export async function apiRegister(email, password, name) {
   return apiFetch("/api/auth/register", {
@@ -10,7 +10,6 @@ export async function apiRegister(email, password, name) {
     body: JSON.stringify({ email, password, name })
   });
 }
-
 export async function apiLogin(email, password) {
   return apiFetch("/api/auth/login", {
     method: "POST",
@@ -18,21 +17,15 @@ export async function apiLogin(email, password) {
     body: JSON.stringify({ email, password })
   });
 }
-
 export async function apiLogout() {
   return apiFetch("/api/auth/logout", { method: "POST" });
 }
-
-export async function apiMe() {
-  return apiFetch("/api/auth/me");
-}
-
-export async function apiHealth() {
-  return apiFetch("/api/health");
-}
+export async function apiMe() { return apiFetch("/api/auth/me"); }
+export async function apiHealth() { return apiFetch("/api/health"); }
 
 /**
  * Blocks
+ * 后端若不支持 title 会忽略；若不允许空 content，会在外层调用处处理重试。
  */
 export async function apiListBlocks() {
   const r = await apiFetch("/api/blocks");
@@ -47,6 +40,9 @@ export async function apiCreateBlock(content, title) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
+  if (!r || !r.block || !r.block.id) {
+    throw Object.assign(new Error("Create block API returned invalid data"), { status: 500 });
+  }
   return r.block;
 }
 
@@ -59,6 +55,9 @@ export async function apiUpdateBlock(id, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
+  if (!r || !r.block || !r.block.id) {
+    throw Object.assign(new Error("Update block API returned invalid data"), { status: 500 });
+  }
   return r.block;
 }
 
@@ -76,5 +75,8 @@ export async function apiUploadImage(file) {
     method: "POST",
     body: fd
   });
+  if (!r || !r.image || !r.image.url) {
+    throw Object.assign(new Error("Image upload API returned invalid data"), { status: 500 });
+  }
   return r.image;
 }
