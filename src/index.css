@@ -1,7 +1,51 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@layer base {
+  :root {
+    --app-radius: 8px;
+  }
+  html, body {
+    @apply bg-bg-light text-slate-800;
+  }
+  .dark html, .dark body {
+    @apply bg-bg-dark text-slate-100;
+  }
+}
 
-:root {
-  color-scheme: light dark;
+@layer components {
+  .card {
+    @apply bg-white dark:bg-slate-800 rounded-lg shadow-soft border border-slate-200/60 dark:border-slate-700/60;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors;
+  }
+  .btn-primary {
+    @apply bg-brand text-white hover:bg-blue-600 disabled:opacity-60;
+  }
+  .btn-outline {
+    @apply border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700;
+  }
+  .input {
+    @apply w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500;
+  }
+  .textarea {
+    @apply input min-h-[120px] resize-y;
+  }
+}
+
+@layer utilities {
+  .fade-in {
+    animation: fade-in 0.25s ease;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* Markdown 渲染微调 */
+.prose {
+  @apply max-w-none;
+}
+.prose img {
+  @apply rounded-md shadow;
 }
