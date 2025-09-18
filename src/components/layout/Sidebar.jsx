@@ -11,7 +11,7 @@ export default function Sidebar({
       <div className="p-3 border-b border-slate-200 dark:border-slate-700 flex gap-2">
         <button
           onClick={onCreate}
-            className="flex-1 btn btn-primary !py-1 !text-sm"
+          className="flex-1 btn btn-primary !py-1 !text-sm"
         >
           新建
         </button>
@@ -28,9 +28,7 @@ export default function Sidebar({
             const raw = (b.content || "").replace(/\r/g, "");
             const lines = raw.split("\n");
             const line1 = (lines[0] || "").trim();
-            // 第二行作为辅助摘要，如果没有第二行则留空
             const line2 = (lines[1] || "").trim();
-
             const title = line1 || "(无标题)";
             const excerpt = line2.slice(0, 60);
             const time = new Date(b.updated_at || b.created_at).toLocaleString();
