@@ -27,19 +27,24 @@ export async function apiListBlocks() {
   const r = await apiFetch("/api/blocks");
   return r.blocks || [];
 }
-export async function apiCreateBlock(content) {
+export async function apiCreateBlock(content, title) {
+  const payload = { content };
+  if (typeof title === "string") payload.title = title;
   const r = await apiFetch("/api/blocks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content })
+    body: JSON.stringify(payload)
   });
   return r.block;
 }
-export async function apiUpdateBlock(id, content) {
+export async function apiUpdateBlock(id, { content, title }) {
+  const payload = {};
+  if (typeof content === "string") payload.content = content;
+  if (typeof title === "string") payload.title = title;
   const r = await apiFetch(`/api/blocks/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content })
+    body: JSON.stringify(payload)
   });
   return r.block;
 }
