@@ -24,17 +24,17 @@ export default function BlockEditorAuto({
   const lastPersisted = useRef({ title: "", content: "" });
   const [previewHtml, setPreviewHtml] = useState("");
 
-  // 焦点 / 光标保持
+  // 焦点 / 光标管理
   const userManuallyBlurredRef = useRef(false);
   const shouldRestoreFocusRef = useRef(false);
   const selectionRef = useRef({ start: null, end: null });
 
-  /* ---------- 预览 ---------- */
+  /* 预览 */
   useEffect(() => {
     if (showPreview) setPreviewHtml(renderMarkdown(content));
   }, [content, showPreview]);
 
-  /* ---------- Block 切换 ---------- */
+  /* block 切换 */
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
@@ -48,7 +48,7 @@ export default function BlockEditorAuto({
     shouldRestoreFocusRef.current = false;
   }, [block?.id]);
 
-  /* ---------- 自动派生标题 ---------- */
+  /* 自动派生标题 */
   useEffect(() => {
     if (!block) return;
     if (!titleManuallyEdited && !title && content) {
@@ -61,7 +61,7 @@ export default function BlockEditorAuto({
     (title !== lastPersisted.current.title ||
       content !== lastPersisted.current.content);
 
-  /* ---------- 光标与焦点 ---------- */
+  /* 光标控制 */
   function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -89,7 +89,7 @@ export default function BlockEditorAuto({
     }
   }
 
-  /* ---------- 保存 ---------- */
+  /* 保存 */
   async function doSave() {
     if (!block || !dirty || block.optimistic) return;
     setSaving(true);
@@ -113,7 +113,6 @@ export default function BlockEditorAuto({
       requestAnimationFrame(maybeRestoreFocus);
     }
   }
-
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [title, content, debouncedSave, dirty]);
 
@@ -131,17 +130,14 @@ export default function BlockEditorAuto({
     captureSel();
   }
 
-  /* ---------- 行号计算 ----------
-     逻辑：split('\n') 保留末尾空行 => 与 textarea 的行一致 */
+  /* 行号（无软换行 => 逻辑行即可） */
   function getLineNumbersString(text) {
     if (text === "") return "1";
     const arr = text.split("\n");
-    // 末尾若是换行，split 会产生一个 ''，这是我们想要的行（空行）
     return arr.map((_, i) => i + 1).join("\n");
   }
   const lineNumbersString = getLineNumbersString(content);
 
-  /* ---------- 滚动同步 ---------- */
   function onTextareaScroll(e) {
     const scrollTop = e.target.scrollTop;
     if (lineNumbersInnerRef.current) {
@@ -149,7 +145,7 @@ export default function BlockEditorAuto({
     }
   }
 
-  /* ---------- 插入/替换（图片占位等） ---------- */
+  /* 插入 / 替换（图片上传占位） */
   function insertAtCursor(text) {
     const ta = textareaRef.current;
     if (!ta) {
@@ -183,7 +179,7 @@ export default function BlockEditorAuto({
     requestAnimationFrame(restoreSel);
   }
 
-  /* ---------- 粘贴 / 拖拽图片 ---------- */
+  /* 粘贴 / 拖拽 图片 */
   const handlePaste = useCallback(async (e) => {
     if (!block) return;
     const items = Array.from(e.clipboardData.items).filter(it => it.type.startsWith("image/"));
@@ -221,18 +217,13 @@ export default function BlockEditorAuto({
     }
   }
 
-  /* ---------- 预览焦点恢复 ---------- */
   useEffect(() => {
     if (!block) return;
     requestAnimationFrame(maybeRestoreFocus);
   }, [content, title, block?.id]);
 
   if (!block) {
-    return (
-      <div className="flex items-center justify-center h-full text-sm text-slate-400">
-        请选择左侧 Block 或点击“新建”
-      </div>
-    );
+    return <div className="flex items-center justify-center h-full text-sm text-slate-400">请选择左侧 Block 或点击“新建”</div>;
   }
 
   return (
@@ -242,7 +233,7 @@ export default function BlockEditorAuto({
       onDrop={handleDrop}
       onDragOver={e => e.preventDefault()}
     >
-      {/* 顶部工具栏 */}
+      {/* 工具栏 */}
       <div className="flex items-center gap-3 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
         <input
           className="text-xl font-semibold bg-transparent outline-none flex-1 placeholder-slate-400"
@@ -285,9 +276,9 @@ export default function BlockEditorAuto({
         </div>
       </div>
 
-      {/* 主体区域 */}
+      {/* 主体 */}
       <div className="flex-1 flex min-h-0">
-        {/* 编辑器区域 */}
+        {/* 编辑器 */}
         <div className={"flex-1 flex flex-col " + (showPreview ? "w-1/2" : "w-full")}>
           <div className="editor-wrapper">
             <div className="editor-code-area">
@@ -306,6 +297,7 @@ export default function BlockEditorAuto({
                 value={content}
                 placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
                 disabled={block.optimistic}
+                wrap="off"
                 onChange={e => {
                   setContent(e.target.value);
                   shouldRestoreFocusRef.current = true;
