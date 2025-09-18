@@ -1,11 +1,17 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useCallback
+} from "react";
 import { useDebouncedCallback } from "../../hooks/useDebouncedCallback.js";
 import { deriveTitle } from "../../lib/blockText.js";
 import { apiUploadImage } from "../../api/cloudflare.js";
 import { useToast } from "../../hooks/useToast.jsx";
+import { renderMarkdown } from "../../lib/markdown.js";
 
 /**
- * 自动保存 + 标题编辑 + 粘贴/拖拽图片上传
+ * 自动保存 + 标题初始派生（仅首次） + 粘贴/拖拽图片 + 模式切换（Markdown 预览 / 源码）
  * props:
  *  - block
  *  - onChange(id, patch)
@@ -25,12 +31,23 @@ export default function BlockEditorAuto({
   const [content, setContent] = useState(block?.content || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const textareaRef = useRef(null);
+  const [mode, setMode] = useState("markdown"); // markdown | source
+  const [titleManuallyEdited, setTitleManuallyEdited] = useState(false);
 
+  const textareaRef = useRef(null);
   const lastPersisted = useRef({
     title: block?.title || deriveTitle(block),
     content: block?.content || ""
   });
+
+  // 预览 HTML
+  const [previewHtml, setPreviewHtml] = useState("");
+
+  useEffect(() => {
+    if (mode === "markdown") {
+      setPreviewHtml(renderMarkdown(content));
+    }
+  }, [content, mode]);
 
   useEffect(() => {
     setTitle(block?.title || deriveTitle(block));
@@ -40,7 +57,15 @@ export default function BlockEditorAuto({
       content: block?.content || ""
     };
     setError("");
+    setTitleManuallyEdited(!!(block && block.title));
   }, [block?.id]);
+
+  // 标题自动填充逻辑：仅当标题空且用户未手动编辑过
+  useEffect(() => {
+    if (!titleManuallyEdited && !title && content) {
+      setTitle(content.slice(0, 10));
+    }
+  }, [content, title, titleManuallyEdited]);
 
   const dirty =
     block &&
@@ -51,7 +76,10 @@ export default function BlockEditorAuto({
     if (!block || !dirty || block.optimistic) return;
     setSaving(true);
     setError("");
-    const payload = { title, content };
+    const payload = {
+      title: title || "", // 允许空，但后端可能忽略
+      content
+    };
     try {
       onChange && onChange(block.id, { ...payload, optimistic: true });
       let real;
@@ -75,14 +103,15 @@ export default function BlockEditorAuto({
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
 
   useEffect(() => {
-    if (dirty) debouncedSave();
-  }, [title, content, debouncedSave, dirty]);
+    if (dirty && mode === "source") debouncedSave(); // 仅在源码模式实时防抖（预览模式不可改）
+  }, [title, content, debouncedSave, dirty, mode]);
 
   function onBlur() {
-    flushSave();
+    if (mode === "source") {
+      flushSave();
+    }
   }
 
-  // 插入文本到光标处
   function insertAtCursor(text) {
     const ta = textareaRef.current;
     if (!ta) {
@@ -107,7 +136,7 @@ export default function BlockEditorAuto({
 
   const handlePaste = useCallback(
     async (e) => {
-      if (!block) return;
+      if (!block || mode !== "source") return;
       const items = Array.from(e.clipboardData.items).filter(it =>
         it.type.startsWith("image/")
       );
@@ -118,12 +147,12 @@ export default function BlockEditorAuto({
         await uploadOne(file);
       }
     },
-    [block]
+    [block, mode]
   );
 
   const handleDrop = useCallback(
     async (e) => {
-      if (!block) return;
+      if (!block || mode !== "source") return;
       e.preventDefault();
       const files = Array.from(e.dataTransfer.files).filter(f =>
         f.type.startsWith("image/")
@@ -133,7 +162,7 @@ export default function BlockEditorAuto({
         await uploadOne(file);
       }
     },
-    [block]
+    [block, mode]
   );
 
   async function uploadOne(file) {
@@ -145,7 +174,7 @@ export default function BlockEditorAuto({
     try {
       const img = await apiUploadImage(file);
       replaceOnce(placeholder, `![image](${img.url})\n`);
-      flushSave(); // 立即保存
+      flushSave();
       toast.push("图片已上传", { type: "success" });
     } catch (e) {
       replaceOnce(placeholder, `![失败](#)\n`);
@@ -161,56 +190,114 @@ export default function BlockEditorAuto({
     );
   }
 
+  function switchMode(next) {
+    if (next === mode) return;
+    // 切到预览前先 flush 保存
+    if (mode === "source" && dirty) {
+      flushSave();
+    }
+    setMode(next);
+  }
+
   return (
     <div
       className="h-full flex flex-col"
       onPaste={handlePaste}
       onDrop={handleDrop}
-      onDragOver={e => e.preventDefault()}
+      onDragOver={e => {
+        if (mode === "source") e.preventDefault();
+      }}
     >
       <div className="flex items-center gap-3 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
         <input
           className="text-xl font-semibold bg-transparent outline-none flex-1 placeholder-slate-400"
           placeholder="标题..."
           value={title}
-          onChange={e => setTitle(e.target.value)}
+          disabled={block.optimistic}
+          onChange={e => {
+            setTitle(e.target.value);
+            setTitleManuallyEdited(true);
+          }}
           onBlur={onBlur}
         />
-        <div className="text-xs text-slate-400 select-none">
-          {saving
-            ? "保存中..."
-            : error
-            ? (
-              <button
-                onClick={doSave}
-                className="text-red-500 hover:underline"
-              >
-                重试
-              </button>
-            )
-            : dirty
-            ? "待保存..."
-            : "已保存"}
+        <div className="flex items-center gap-2 text-xs">
+          <div className="flex rounded border border-slate-300 dark:border-slate-600 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => switchMode("markdown")}
+              className={
+                "px-2 py-1 " +
+                (mode === "markdown"
+                  ? "bg-slate-200 dark:bg-slate-700 font-medium"
+                  : "hover:bg-slate-100 dark:hover:bg-slate-800")
+              }
+            >
+              Markdown
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode("source")}
+              className={
+                "px-2 py-1 " +
+                (mode === "source"
+                  ? "bg-slate-200 dark:bg-slate-700 font-medium"
+                  : "hover:bg-slate-100 dark:hover:bg-slate-800")
+              }
+            >
+              源码
+            </button>
+          </div>
+          <div className="text-slate-400 select-none min-w-[56px] text-right">
+            {saving
+              ? "保存中..."
+              : error
+              ? (
+                <button
+                  onClick={doSave}
+                  className="text-red-500 hover:underline"
+                >
+                  重试
+                </button>
+              )
+              : dirty && mode === "source"
+              ? "待保存..."
+              : "已保存"}
+          </div>
+          <button
+            onClick={() => {
+              if (confirm("确定删除该 Block？")) {
+                onDelete && onDelete(block.id);
+              }
+            }}
+            className="btn btn-outline !py-1 !px-3 text-xs"
+          >
+            删除
+          </button>
         </div>
-        <button
-          onClick={() => {
-            if (confirm("确定删除该 Block？")) {
-              onDelete && onDelete(block.id);
-            }
-          }}
-          className="btn btn-outline !py-1 !px-3 text-xs"
-        >
-          删除
-        </button>
       </div>
-      <textarea
-        ref={textareaRef}
-        className="flex-1 p-4 resize-none outline-none bg-transparent font-mono text-sm leading-5 custom-scroll"
-        value={content}
-        placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
-        onChange={e => setContent(e.target.value)}
-        onBlur={onBlur}
-      />
+
+      {mode === "source" ? (
+        <textarea
+          ref={textareaRef}
+          className="flex-1 p-4 resize-none outline-none bg-transparent font-mono text-sm leading-5 custom-scroll"
+          value={content}
+          placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
+          disabled={block.optimistic}
+          onChange={e => setContent(e.target.value)}
+          onBlur={onBlur}
+        />
+      ) : (
+        <div
+          className="flex-1 p-4 overflow-auto custom-scroll prose prose-sm dark:prose-invert"
+          dangerouslySetInnerHTML={{
+            __html:
+              previewHtml ||
+              "<p class='text-slate-400'>暂无内容，切换到“源码”进行编辑。</p>"
+          }}
+          onDoubleClick={() => switchMode("source")}
+          title="双击切换到源码编辑"
+        />
+      )}
     </div>
   );
 }
