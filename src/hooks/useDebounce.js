@@ -1,23 +1,10 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 
-/**
- * 防抖 Hook，用于延迟执行函数
- * @param {any} value - 需要防抖的值
- * @param {number} delay - 延迟时间（毫秒）
- * @returns {any} 防抖后的值
- */
-export const useDebounce = (value, delay) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
+export function useDebounce(value, delay = 400) {
+  const [v, setV] = useState(value);
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
+    const t = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(t);
   }, [value, delay]);
-
-  return debouncedValue;
-};
+  return v;
+}
