@@ -4,6 +4,7 @@
 //  - PBKDF2 iterations reduced to <=100000 (configurable via env.PBKDF2_ITER)
 //  - Proper HttpError status propagation
 //  - Slightly clearer error responses
+//  - Allow empty string content for blocks (only missing field rejects)
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 const SESSION_COOKIE = "sid";
@@ -20,7 +21,6 @@ export async function onRequest(context) {
   try {
     return await handleApi(request, env);
   } catch (e) {
-    // Distinguish our own HttpError vs unexpected errors
     if (e instanceof HttpError) {
       return json({ error: e.message }, e.status);
     }
@@ -99,7 +99,7 @@ async function register(request, env) {
   if (existing) throw new HttpError(400, "邮箱已注册");
 
   const id = crypto.randomUUID();
-  const password_hash = await hashPassword(password, env); // uses safe iterations
+  const password_hash = await hashPassword(password, env);
   const created_at = new Date().toISOString();
 
   await env.DB.prepare(
@@ -132,8 +132,8 @@ async function login(request, env) {
   return json({ user: publicUser(row) }, 200, setSessionCookie(token, ttlSec));
 }
 
-async function logout(request, env) {
-  const session = await getSessionFromRequest(request, env);
+async function logout(_request, env) {
+  const session = await getSessionFromRequest(_request, env);
   if (session) {
     await env.KV.delete(`session:${session.token}`);
   }
@@ -150,8 +150,14 @@ async function listBlocks(env, userId) {
 }
 
 async function createBlock(request, env, userId) {
-  const { content } = await parseJson(request);
-  if (!content) throw new HttpError(400, "缺少 content");
+  // 允许空字符串；仅在字段缺失时报错
+  const body = await parseJson(request);
+  if (!body || !Object.prototype.hasOwnProperty.call(body, "content")) {
+    throw new HttpError(400, "缺少 content");
+  }
+  let content = body.content;
+  if (content === undefined || content === null) content = "";
+  if (typeof content !== "string") content = String(content);
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -164,8 +170,14 @@ async function createBlock(request, env, userId) {
 }
 
 async function updateBlock(request, env, userId, blockId) {
-  const { content } = await parseJson(request);
-  if (!content) throw new HttpError(400, "缺少 content");
+  // 允许更新为空字符串；只要字段存在即可
+  const body = await parseJson(request);
+  if (!body || !Object.prototype.hasOwnProperty.call(body, "content")) {
+    throw new HttpError(400, "缺少 content");
+  }
+  let content = body.content;
+  if (content === undefined || content === null) content = "";
+  if (typeof content !== "string") content = String(content);
 
   const owned = await env.DB.prepare(
     "SELECT id FROM blocks WHERE id = ? AND user_id = ?"
@@ -267,7 +279,6 @@ function requireAuth(user) {
 
 /* ================== Crypto (password) ================== */
 
-// iterations: configurable via PBKDF2_ITER env (<=100000), default 100000
 function getIterations(env) {
   const raw = parseInt(env.PBKDF2_ITER || "100000", 10);
   return Math.min(raw > 0 ? raw : 100000, 100000);
