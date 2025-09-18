@@ -502,3 +502,15 @@ textarea {
   font-size:11px;
   line-height:1.3;
 }
+
+/* 追加：多空行在 Markdown 预览中的保留样式 */
+.prose p.md-empty-line {
+  margin: 0;
+  line-height: 1;
+  height: 0.9rem; /* 可调节：多空行的视觉高度 */
+  pointer-events: none;
+  user-select: none;
+}
+.dark .prose p.md-empty-line {
+  opacity: .85;
+}
