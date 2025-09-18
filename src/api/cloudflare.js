@@ -1,76 +1,57 @@
-const API = "/api";
+import { apiFetch } from "../lib/apiClient.js";
 
-async function request(path, { method = "GET", body, form } = {}) {
-  const opts = {
-    method,
-    credentials: "include",
-    headers: {}
-  };
-  if (form) {
-    opts.body = form;
-  } else if (body) {
-    opts.headers["Content-Type"] = "application/json";
-    opts.body = JSON.stringify(body);
-  }
-  const res = await fetch(API + path, opts);
-  const ct = res.headers.get("Content-Type") || "";
-  let data = null;
-  if (ct.includes("application/json")) {
-    data = await res.json();
-  } else {
-    data = await res.text();
-  }
-  if (!res.ok) {
-    const err = (data && data.error) || res.status + " Error";
-    throw new Error(err);
-  }
-  return data;
-}
-
-/* Auth */
 export async function apiRegister(email, password, name) {
-  return request("/auth/register", { method: "POST", body: { email, password, name } });
+  return apiFetch("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, name })
+  });
 }
 export async function apiLogin(email, password) {
-  return request("/auth/login", { method: "POST", body: { email, password } });
+  return apiFetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
 }
 export async function apiLogout() {
-  return request("/auth/logout", { method: "POST" });
+  return apiFetch("/api/auth/logout", { method: "POST" });
 }
 export async function apiMe() {
-  try {
-    const data = await request("/auth/me");
-    return data.user;
-  } catch {
-    return null;
-  }
+  return apiFetch("/api/auth/me");
 }
-
-/* Blocks */
+export async function apiHealth() {
+  return apiFetch("/api/health");
+}
 export async function apiListBlocks() {
-  const data = await request("/blocks");
-  return data.blocks;
+  const r = await apiFetch("/api/blocks");
+  return r.blocks || [];
 }
 export async function apiCreateBlock(content) {
-  const data = await request("/blocks", { method: "POST", body: { content } });
-  return data.block;
+  const r = await apiFetch("/api/blocks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content })
+  });
+  return r.block;
 }
 export async function apiUpdateBlock(id, content) {
-  const data = await request(`/blocks/${id}`, { method: "PUT", body: { content } });
-  return data.block;
+  const r = await apiFetch(`/api/blocks/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content })
+  });
+  return r.block;
 }
 export async function apiDeleteBlock(id) {
-  await request(`/blocks/${id}`, { method: "DELETE" });
-  return true;
+  return apiFetch(`/api/blocks/${id}`, { method: "DELETE" });
 }
-
-/* Images */
 export async function apiUploadImage(file) {
-  const form = new FormData();
-  form.append("file", file);
-  const data = await request("/images", { method: "POST", form });
-  return data.image;
-}
-export function buildImageUrl(id) {
-  return `/api/images/${id}`;
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await apiFetch("/api/images", {
+    method: "POST",
+    body: fd
+  });
+  return r.image;
 }
