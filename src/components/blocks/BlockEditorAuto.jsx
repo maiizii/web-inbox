@@ -18,24 +18,23 @@ export default function BlockEditorAuto({
   const [error, setError] = useState("");
   const [showPreview, setShowPreview] = useState(true);
   const [titleManuallyEdited, setTitleManuallyEdited] = useState(false);
+
   const textareaRef = useRef(null);
-  const lineNumbersRef = useRef(null);
+  const lineNumbersInnerRef = useRef(null);
   const lastPersisted = useRef({ title: "", content: "" });
   const [previewHtml, setPreviewHtml] = useState("");
 
-  // 焦点 / 光标
+  // 焦点 / 光标保持
   const userManuallyBlurredRef = useRef(false);
   const shouldRestoreFocusRef = useRef(false);
   const selectionRef = useRef({ start: null, end: null });
 
-  // 预览
+  /* ---------- 预览 ---------- */
   useEffect(() => {
-    if (showPreview) {
-      setPreviewHtml(renderMarkdown(content));
-    }
+    if (showPreview) setPreviewHtml(renderMarkdown(content));
   }, [content, showPreview]);
 
-  // Block 切换
+  /* ---------- Block 切换 ---------- */
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
@@ -49,7 +48,7 @@ export default function BlockEditorAuto({
     shouldRestoreFocusRef.current = false;
   }, [block?.id]);
 
-  // 自动标题
+  /* ---------- 自动派生标题 ---------- */
   useEffect(() => {
     if (!block) return;
     if (!titleManuallyEdited && !title && content) {
@@ -62,7 +61,7 @@ export default function BlockEditorAuto({
     (title !== lastPersisted.current.title ||
       content !== lastPersisted.current.content);
 
-  // 光标
+  /* ---------- 光标与焦点 ---------- */
   function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -76,9 +75,7 @@ export default function BlockEditorAuto({
     if (!ta) return;
     const { start, end } = selectionRef.current;
     if (start != null && end != null) {
-      try {
-        ta.setSelectionRange(start, end);
-      } catch {}
+      try { ta.setSelectionRange(start, end); } catch {}
     }
   }
   function maybeRestoreFocus() {
@@ -92,6 +89,7 @@ export default function BlockEditorAuto({
     }
   }
 
+  /* ---------- 保存 ---------- */
   async function doSave() {
     if (!block || !dirty || block.optimistic) return;
     setSaving(true);
@@ -117,10 +115,7 @@ export default function BlockEditorAuto({
   }
 
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
-
-  useEffect(() => {
-    if (dirty) debouncedSave();
-  }, [title, content, debouncedSave, dirty]);
+  useEffect(() => { if (dirty) debouncedSave(); }, [title, content, debouncedSave, dirty]);
 
   function onBlur() {
     userManuallyBlurredRef.current = true;
@@ -136,17 +131,25 @@ export default function BlockEditorAuto({
     captureSel();
   }
 
-  // 行号
-  const lineCount = content.split("\n").length || 1;
-  const lineNumbersString = Array.from({ length: lineCount }, (_, i) => i + 1).join("\n");
+  /* ---------- 行号计算 ----------
+     逻辑：split('\n') 保留末尾空行 => 与 textarea 的行一致 */
+  function getLineNumbersString(text) {
+    if (text === "") return "1";
+    const arr = text.split("\n");
+    // 末尾若是换行，split 会产生一个 ''，这是我们想要的行（空行）
+    return arr.map((_, i) => i + 1).join("\n");
+  }
+  const lineNumbersString = getLineNumbersString(content);
 
-  // 同步滚动（行号跟随）
+  /* ---------- 滚动同步 ---------- */
   function onTextareaScroll(e) {
-    if (lineNumbersRef.current) {
-      lineNumbersRef.current.style.transform = `translateY(-${e.target.scrollTop}px)`;
+    const scrollTop = e.target.scrollTop;
+    if (lineNumbersInnerRef.current) {
+      lineNumbersInnerRef.current.style.transform = `translateY(-${scrollTop}px)`;
     }
   }
 
+  /* ---------- 插入/替换（图片占位等） ---------- */
   function insertAtCursor(text) {
     const ta = textareaRef.current;
     if (!ta) {
@@ -165,7 +168,6 @@ export default function BlockEditorAuto({
       }
     });
   }
-
   function replaceOnce(target, replacement) {
     captureSel();
     setContent(c => {
@@ -181,11 +183,10 @@ export default function BlockEditorAuto({
     requestAnimationFrame(restoreSel);
   }
 
+  /* ---------- 粘贴 / 拖拽图片 ---------- */
   const handlePaste = useCallback(async (e) => {
     if (!block) return;
-    const items = Array.from(e.clipboardData.items).filter(it =>
-      it.type.startsWith("image/")
-    );
+    const items = Array.from(e.clipboardData.items).filter(it => it.type.startsWith("image/"));
     if (!items.length) return;
     e.preventDefault();
     for (const it of items) {
@@ -197,9 +198,7 @@ export default function BlockEditorAuto({
   const handleDrop = useCallback(async (e) => {
     if (!block) return;
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f =>
-      f.type.startsWith("image/")
-    );
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
     if (!files.length) return;
     for (const file of files) {
       await uploadOne(file);
@@ -222,6 +221,7 @@ export default function BlockEditorAuto({
     }
   }
 
+  /* ---------- 预览焦点恢复 ---------- */
   useEffect(() => {
     if (!block) return;
     requestAnimationFrame(maybeRestoreFocus);
@@ -265,14 +265,14 @@ export default function BlockEditorAuto({
           >
             {showPreview ? "隐藏预览" : "显示预览"}
           </button>
-            <div className="text-slate-400 select-none min-w-[56px] text-right">
+          <div className="text-slate-400 select-none min-w-[56px] text-right">
             {saving
               ? "保存中..."
               : error
-              ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button>
-              : dirty
-              ? "待保存..."
-              : "已保存"}
+                ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button>
+                : dirty
+                  ? "待保存..."
+                  : "已保存"}
           </div>
           <button
             onClick={() => {
@@ -287,13 +287,13 @@ export default function BlockEditorAuto({
 
       {/* 主体区域 */}
       <div className="flex-1 flex min-h-0">
-        {/* 编辑器 */}
+        {/* 编辑器区域 */}
         <div className={"flex-1 flex flex-col " + (showPreview ? "w-1/2" : "w-full")}>
           <div className="editor-wrapper">
             <div className="editor-code-area">
               <div className="editor-line-numbers">
                 <pre
-                  ref={lineNumbersRef}
+                  ref={lineNumbersInnerRef}
                   className="editor-line-numbers-inner"
                   aria-hidden="true"
                 >
