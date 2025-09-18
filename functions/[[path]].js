@@ -1,41 +1,46 @@
-// Cloudflare Pages Functions - Unified handler for all routes
-// 捕获所有路径：[[path]].js
-// 仅处理以 /api/ 开头的请求，其他交给静态资源 (next())。
-// SPA 回退由前端路由 & Pages 默认 index.html 提供。
+// Cloudflare Pages Functions - Catch all routes
+// Handles /api/*, other paths go to static assets / SPA.
+// Improvements:
+//  - PBKDF2 iterations reduced to <=100000 (configurable via env.PBKDF2_ITER)
+//  - Proper HttpError status propagation
+//  - Slightly clearer error responses
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 const SESSION_COOKIE = "sid";
 
-// 入口
 export async function onRequest(context) {
   const { request, env, next } = context;
   const url = new URL(request.url);
 
-  try {
-    if (url.pathname.startsWith("/api/")) {
-      return await handleApi(request, env);
-    }
+  if (!url.pathname.startsWith("/api/")) {
+    // Not an API path: pass through to static assets / SPA
+    return next();
+  }
 
-    // 非 /api/ 交给静态资源与前端
-    return await next();
+  try {
+    return await handleApi(request, env);
   } catch (e) {
-    console.error("API Fatal Error:", e);
+    // Distinguish our own HttpError vs unexpected errors
+    if (e instanceof HttpError) {
+      return json({ error: e.message }, e.status);
+    }
+    console.error("UNHANDLED API ERROR:", e);
     return json({ error: "Internal Error", detail: e.message }, 500);
   }
 }
 
-/* ================== API 路由 ================== */
+/* ================== API Router ================== */
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const { pathname } = url;
   const method = request.method.toUpperCase();
 
-  // 无需会话的路由
+  // Public endpoint
   if (pathname === "/api/health" && method === "GET") {
     return json({ ok: true, ts: Date.now() });
   }
 
-  // Session & User
+  // Session & User (for protected endpoints)
   const session = await getSessionFromRequest(request, env);
   const user = session ? await getUserById(env, session.userId) : null;
 
@@ -86,15 +91,15 @@ async function handleApi(request, env) {
 
 async function register(request, env) {
   const { email, password, name } = await parseJson(request);
-  if (!email || !password) return json({ error: "缺少 email 或 password" }, 400);
+  if (!email || !password) throw new HttpError(400, "缺少 email 或 password");
 
   const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?")
     .bind(email)
     .first();
-  if (existing) return json({ error: "邮箱已注册" }, 400);
+  if (existing) throw new HttpError(400, "邮箱已注册");
 
   const id = crypto.randomUUID();
-  const password_hash = await hashPassword(password);
+  const password_hash = await hashPassword(password, env); // uses safe iterations
   const created_at = new Date().toISOString();
 
   await env.DB.prepare(
@@ -106,15 +111,15 @@ async function register(request, env) {
 
 async function login(request, env) {
   const { email, password } = await parseJson(request);
-  if (!email || !password) return json({ error: "缺少 email 或 password" }, 400);
+  if (!email || !password) throw new HttpError(400, "缺少 email 或 password");
 
   const row = await env.DB.prepare(
     "SELECT id, email, password_hash, name, created_at FROM users WHERE email = ?"
   ).bind(email).first();
 
-  if (!row) return json({ error: "用户不存在" }, 400);
+  if (!row) throw new HttpError(400, "用户不存在");
   const ok = await verifyPassword(password, row.password_hash);
-  if (!ok) return json({ error: "密码错误" }, 401);
+  if (!ok) throw new HttpError(401, "密码错误");
 
   const token = generateToken();
   const ttlSec = parseInt(env.SESSION_TTL_SECONDS || "604800", 10);
@@ -146,7 +151,7 @@ async function listBlocks(env, userId) {
 
 async function createBlock(request, env, userId) {
   const { content } = await parseJson(request);
-  if (!content) return json({ error: "缺少 content" }, 400);
+  if (!content) throw new HttpError(400, "缺少 content");
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -160,12 +165,12 @@ async function createBlock(request, env, userId) {
 
 async function updateBlock(request, env, userId, blockId) {
   const { content } = await parseJson(request);
-  if (!content) return json({ error: "缺少 content" }, 400);
+  if (!content) throw new HttpError(400, "缺少 content");
 
   const owned = await env.DB.prepare(
     "SELECT id FROM blocks WHERE id = ? AND user_id = ?"
   ).bind(blockId, userId).first();
-  if (!owned) return json({ error: "不存在或无权限" }, 404);
+  if (!owned) throw new HttpError(404, "不存在或无权限");
 
   const now = new Date().toISOString();
   await env.DB.prepare(
@@ -187,15 +192,15 @@ async function deleteBlock(env, userId, blockId) {
 async function uploadImage(request, env, userId) {
   const ct = request.headers.get("Content-Type") || "";
   if (!ct.startsWith("multipart/form-data"))
-    return json({ error: "需要 multipart/form-data" }, 400);
+    throw new HttpError(400, "需要 multipart/form-data");
 
   const formData = await request.formData();
   const file = formData.get("file");
-  if (!file || typeof file === "string") return json({ error: "未找到文件" }, 400);
+  if (!file || typeof file === "string") throw new HttpError(400, "未找到文件");
 
   const buf = await file.arrayBuffer();
   const size = buf.byteLength;
-  if (size > 2 * 1024 * 1024) return json({ error: "文件过大 (>2MB)" }, 400);
+  if (size > 2 * 1024 * 1024) throw new HttpError(400, "文件过大 (>2MB)");
 
   const id = crypto.randomUUID();
   const mime = file.type || "application/octet-stream";
@@ -205,7 +210,7 @@ async function uploadImage(request, env, userId) {
     "INSERT INTO images (id, user_id, mime, size, created_at) VALUES (?, ?, ?, ?, ?)"
   ).bind(id, userId, mime, size, created_at).run();
 
-  await env.KV.put(`image:${id}`, buf); // 二进制存 KV
+  await env.KV.put(`image:${id}`, buf);
 
   return json({ image: { id, mime, size, url: `/api/images/${id}`, created_at } }, 201);
 }
@@ -214,11 +219,11 @@ async function getImage(env, userId, id) {
   const row = await env.DB.prepare(
     "SELECT mime, user_id FROM images WHERE id = ?"
   ).bind(id).first();
-  if (!row) return json({ error: "不存在" }, 404);
-  if (row.user_id !== userId) return json({ error: "无权限" }, 403);
+  if (!row) throw new HttpError(404, "不存在");
+  if (row.user_id !== userId) throw new HttpError(403, "无权限");
 
   const data = await env.KV.get(`image:${id}`, "arrayBuffer");
-  if (!data) return json({ error: "内容缺失" }, 404);
+  if (!data) throw new HttpError(404, "内容缺失");
 
   return new Response(data, {
     headers: {
@@ -262,13 +267,19 @@ function requireAuth(user) {
 
 /* ================== Crypto (password) ================== */
 
-async function hashPassword(password) {
+// iterations: configurable via PBKDF2_ITER env (<=100000), default 100000
+function getIterations(env) {
+  const raw = parseInt(env.PBKDF2_ITER || "100000", 10);
+  return Math.min(raw > 0 ? raw : 100000, 100000);
+}
+
+async function hashPassword(password, env) {
+  const iterations = getIterations(env);
   const enc = new TextEncoder();
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const keyMaterial = await crypto.subtle.importKey(
     "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]
   );
-  const iterations = 150000;
   const hashBuffer = await crypto.subtle.deriveBits(
     { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
     keyMaterial,
@@ -289,12 +300,12 @@ async function verifyPassword(password, stored) {
     const keyMaterial = await crypto.subtle.importKey(
       "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]
     );
-    const testBuffer = await crypto.subtle.deriveBits(
+    const testBuf = await crypto.subtle.deriveBits(
       { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
       keyMaterial,
       256
     );
-    const testHash = new Uint8Array(testBuffer);
+    const testHash = new Uint8Array(testBuf);
     return timingSafeEqual(hash, testHash);
   } catch {
     return false;
