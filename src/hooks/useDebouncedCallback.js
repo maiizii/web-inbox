@@ -1,8 +1,9 @@
 import { useRef, useCallback, useEffect } from "react";
 
 /**
- * Returns a debounced function and a flush method.
- * delay: ms
+ * 返回一个带防抖的函数和对应的 flush / clear。
+ * 用法：
+ * const [debounced, flush, clear] = useDebouncedCallback(fn, 500);
  */
 export function useDebouncedCallback(fn, delay) {
   const timer = useRef(null);
@@ -15,14 +16,17 @@ export function useDebouncedCallback(fn, delay) {
     }
   };
 
-  const debounced = useCallback((...args) => {
-    lastArgs.current = args;
-    clear();
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      fn(...lastArgs.current);
-    }, delay);
-  }, [fn, delay]);
+  const debounced = useCallback(
+    (...args) => {
+      lastArgs.current = args;
+      clear();
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        fn(...lastArgs.current);
+      }, delay);
+    },
+    [fn, delay]
+  );
 
   const flush = useCallback(() => {
     if (timer.current) {
