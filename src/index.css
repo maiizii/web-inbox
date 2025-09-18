@@ -504,22 +504,19 @@ textarea {
 }
 
 
-/* ------ 多空行可视化（Markdown 预览） ------ */
+/* ============ Markdown 空行占位 ============ */
 .prose .md-empty-line {
-  height: 0.9rem;      /* 每个空行的视觉高度，可调整 */
+  height: 0.9rem;
   line-height: 0.9rem;
   margin: 0;
   padding: 0;
   pointer-events: none;
   user-select: none;
-  opacity: .0;         /* 设置为 0 只留空间，如需浅色占位改成 .4 */
-  /* border: 1px dashed #eee;  // 调试时可打开 */
+  opacity: 0; /* 只留空间；调试可改成 .4 看占位 */
 }
-.dark .prose .md-empty-line {
-  opacity: .0;
-}
+.dark .prose .md-empty-line { opacity: 0; }
 
-/* ------ 行号编辑器（更新：关闭软换行） ------ */
+/* ============ 行号编辑器（对齐修正版） ============ */
 .editor-wrapper {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
   position: relative;
@@ -535,9 +532,11 @@ textarea {
   overflow: hidden;
   background: transparent;
 }
+
+/* 行号列：去掉垂直 padding，用 JS 同步 textarea 的 paddingTop */
 .editor-line-numbers {
   position: relative;
-  padding: 6px 6px 6px 8px;
+  padding: 0 6px 0 8px; /* 只保留水平 */
   font-size: 13px;
   line-height: 1.4;
   color: #94a3b8;
@@ -554,14 +553,18 @@ textarea {
   border-color: #334155;
   color: #64748b;
 }
+
+/* 内层绝对定位，top 由 JS 设置为与 textarea padding-top 一致 */
 .editor-line-numbers-inner {
   position: absolute;
-  top: 0;
+  top: 0; /* JS 动态改 */
   left: 0;
   right: 0;
   white-space: pre;
-  padding-right: 4px;
   font-variant-numeric: tabular-nums;
+  padding-right: 4px;
+  transform: translateY(0);
+  will-change: transform;
 }
 
 .editor-textarea {
@@ -577,28 +580,18 @@ textarea {
   font-family: inherit;
   overflow: auto;
   tab-size: 2;
-  white-space: pre;    /* 关键：关闭自动换行 */
+  white-space: pre;      /* 保持逻辑行 = 屏幕行；若想开启软换行，改成 pre-wrap */
   overflow-wrap: normal;
   word-break: normal;
 }
 .editor-textarea:focus { outline: none; }
 
-.editor-textarea::-webkit-scrollbar {
-  width: 10px;
-}
-.editor-textarea::-webkit-scrollbar-track {
-  background: transparent;
-}
+.editor-textarea::-webkit-scrollbar { width: 10px; }
+.editor-textarea::-webkit-scrollbar-track { background: transparent; }
 .editor-textarea::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 5px;
 }
-.dark .editor-textarea::-webkit-scrollbar-thumb {
-  background: #475569;
-}
-.editor-textarea::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-.dark .editor-textarea::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
+.dark .editor-textarea::-webkit-scrollbar-thumb { background: #475569; }
+.editor-textarea::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.dark .editor-textarea::-webkit-scrollbar-thumb:hover { background: #64748b; }
