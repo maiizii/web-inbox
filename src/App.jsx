@@ -1,76 +1,34 @@
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
-import { AuthProvider, useAuth } from "./context/AuthContext";
-import AuthPage from "./pages/AuthPage";
-import InboxPage from "./pages/InboxPage";
-import Loader from "./components/Loader";
-import ErrorBoundary from "./components/ErrorBoundary";
+import React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
+import AuthPage from "./pages/AuthPage.jsx";
+import InboxPage from "./pages/InboxPage.jsx";
+import "./App.css";
 
-// 私有路由组件
-const PrivateRoute = ({ children }) => {
-  const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader size="large" text="检查登录状态..." />
-      </div>
-    );
-  }
-
-  return user ? children : <Navigate to="/login" replace />;
-};
-
-// 公共路由组件（已登录用户重定向到主页）
-const PublicRoute = ({ children }) => {
-  const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader size="large" text="检查登录状态..." />
-      </div>
-    );
-  }
-
-  return user ? <Navigate to="/" replace /> : children;
-};
-
-function App() {
-  return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <Router>
-          <div className="App">
-            <Routes>
-              <Route
-                path="/login"
-                element={
-                  <PublicRoute>
-                    <AuthPage />
-                  </PublicRoute>
-                }
-              />
-              <Route
-                path="/"
-                element={
-                  <PrivateRoute>
-                    <InboxPage />
-                  </PrivateRoute>
-                }
-              />
-              {/* 默认重定向到主页 */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </div>
-        </Router>
-      </AuthProvider>
-    </ErrorBoundary>
-  );
+function PrivateRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="p-6">加载中...</div>;
+  if (!user) return <Navigate to="/auth" replace />;
+  return children;
 }
 
-export default App;
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/auth" element={<AuthPage />} />
+            <Route
+              path="/"
+              element={
+                <PrivateRoute>
+                  <InboxPage />
+                </PrivateRoute>
+              }
+            />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
