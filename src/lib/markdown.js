@@ -8,7 +8,7 @@ marked.setOptions({
 
 export function renderMarkdown(raw = "") {
   try {
-    const html = marked.parse(raw);
+    const html = marked.parse(raw || "");
     return DOMPurify.sanitize(html);
   } catch {
     return raw;
