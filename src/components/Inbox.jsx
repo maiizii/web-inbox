@@ -6,7 +6,7 @@ import Block from "./Block.jsx";
 import BlockEditor from "./BlockEditor.jsx";
 import ImageUploader from "./ImageUploader.jsx";
 import Spinner from "./ui/Spinner.jsx";
-import { useToast } from "../hooks/useToast.js";
+import { useToast } from "../hooks/useToast.jsx";
 
 export default function Inbox() {
   const [blocks, setBlocks] = useState([]);
