@@ -45,6 +45,7 @@ export function ToastProvider({ children }) {
               <button
                 onClick={() => remove(t.id)}
                 className="opacity-70 hover:opacity-100"
+                aria-label="关闭通知"
               >
                 <X size={16} />
               </button>
