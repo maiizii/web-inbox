@@ -2,7 +2,6 @@ import { useRef, useCallback, useEffect } from "react";
 
 /**
  * 返回一个带防抖的函数和对应的 flush / clear。
- * 用法：
  * const [debounced, flush, clear] = useDebouncedCallback(fn, 500);
  */
 export function useDebouncedCallback(fn, delay) {
