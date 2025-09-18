@@ -1,45 +1,27 @@
 import { apiFetch } from "../lib/apiClient.js";
 
-/**
- * Auth APIs（保持不变）
- */
-export async function apiRegister(email, password, name) {
-  return apiFetch("/api/auth/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, name })
-  });
-}
-export async function apiLogin(email, password) {
-  return apiFetch("/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password })
-  });
-}
-export async function apiLogout() {
-  return apiFetch("/api/auth/logout", { method: "POST" });
-}
-export async function apiMe() { return apiFetch("/api/auth/me"); }
-export async function apiHealth() { return apiFetch("/api/health"); }
+// 其它 auth 函数保持不变（略）
 
-/**
- * Blocks
- * 后端若不支持 title 会忽略；若不允许空 content，会在外层调用处处理重试。
- */
 export async function apiListBlocks() {
   const r = await apiFetch("/api/blocks");
   return r.blocks || [];
 }
 
-export async function apiCreateBlock(content, title) {
-  const body = { content };
-  if (typeof title === "string") body.title = title;
+export async function apiCreateRaw(payload) {
+  // 直接发送指定 payload
   const r = await apiFetch("/api/blocks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify(payload)
   });
+  return r;
+}
+
+// 原有签名保留（最简单模式）
+export async function apiCreateBlock(content, title) {
+  const body = { content };
+  if (typeof title === "string") body.title = title;
+  const r = await apiCreateRaw(body);
   if (!r || !r.block || !r.block.id) {
     throw Object.assign(new Error("Create block API returned invalid data"), { status: 500 });
   }
@@ -65,16 +47,10 @@ export async function apiDeleteBlock(id) {
   return apiFetch(`/api/blocks/${id}`, { method: "DELETE" });
 }
 
-/**
- * Image Upload
- */
 export async function apiUploadImage(file) {
   const fd = new FormData();
   fd.append("file", file);
-  const r = await apiFetch("/api/images", {
-    method: "POST",
-    body: fd
-  });
+  const r = await apiFetch("/api/images", { method: "POST", body: fd });
   if (!r || !r.image || !r.image.url) {
     throw Object.assign(new Error("Image upload API returned invalid data"), { status: 500 });
   }
