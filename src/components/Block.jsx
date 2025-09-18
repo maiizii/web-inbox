@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { apiUpdateBlock, apiDeleteBlock } from "../api/cloudflare.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import Button from "./ui/Button.jsx";
-import { useToast } from "../hooks/useToast.js";
+import { useToast } from "../hooks/useToast.jsx";
 
 export default function Block({ block, onChanged, onDeleted }) {
   const [editing, setEditing] = useState(false);
