@@ -6,17 +6,3 @@ export function looksLikeTitleUnsupported(err) {
     msg.includes("title")
   );
 }
-
-export function looksLikeEmptyContentRejected(err) {
-  if (!err) return false;
-  const msg = (err.message || "").toLowerCase();
-  // 常见关键词：empty, required, blank, missing
-  return (
-    (err.status === 400 || err.status === 422) &&
-    msg.includes("content") &&
-    (msg.includes("empty") ||
-      msg.includes("required") ||
-      msg.includes("blank") ||
-      msg.includes("missing"))
-  );
-}
