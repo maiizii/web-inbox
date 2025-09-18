@@ -22,12 +22,19 @@ export default function BlockEditorAuto({
   const lastPersisted = useRef({ title: "", content: "" });
   const [previewHtml, setPreviewHtml] = useState("");
 
+  // ---- 新增：焦点/光标管理 refs ----
+  const userManuallyBlurredRef = useRef(false);      // 用户是否主动失焦
+  const shouldRestoreFocusRef = useRef(false);       // 是否需要在保存后恢复焦点
+  const selectionRef = useRef({ start: null, end: null }); // 记录光标位置
+
+  // 预览
   useEffect(() => {
     if (showPreview) {
       setPreviewHtml(renderMarkdown(content));
     }
   }, [content, showPreview]);
 
+  // block 切换
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
@@ -37,6 +44,9 @@ export default function BlockEditorAuto({
     };
     setError("");
     setTitleManuallyEdited(!!(block && block.title));
+    // 切换后重置焦点恢复意图
+    shouldRestoreFocusRef.current = false;
+    userManuallyBlurredRef.current = false;
   }, [block?.id]);
 
   // 标题自动一次性派生（前 10 字符）
@@ -51,6 +61,37 @@ export default function BlockEditorAuto({
     block &&
     (title !== lastPersisted.current.title ||
       content !== lastPersisted.current.content);
+
+  // ---- 光标工具 ----
+  function captureSelection() {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    selectionRef.current = {
+      start: ta.selectionStart,
+      end: ta.selectionEnd
+    };
+  }
+  function restoreSelection() {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const { start, end } = selectionRef.current;
+    if (start != null && end != null) {
+      try {
+        ta.setSelectionRange(start, end);
+      } catch {}
+    }
+  }
+  function ensureFocusAfterSave() {
+    // 只有在用户没有主动 blur 且标记需要时恢复
+    if (userManuallyBlurredRef.current) return;
+    if (!shouldRestoreFocusRef.current) return;
+    const ta = textareaRef.current;
+    if (!ta) return;
+    if (document.activeElement !== ta) {
+      ta.focus();
+      restoreSelection();
+    }
+  }
 
   async function doSave() {
     if (!block || !dirty || block.optimistic) return;
@@ -72,6 +113,10 @@ export default function BlockEditorAuto({
       setError(e.message || "保存失败");
     } finally {
       setSaving(false);
+      // 保存完成后尝试恢复焦点
+      requestAnimationFrame(() => {
+        ensureFocusAfterSave();
+      });
     }
   }
 
@@ -82,7 +127,19 @@ export default function BlockEditorAuto({
   }, [title, content, debouncedSave, dirty]);
 
   function onBlur() {
+    userManuallyBlurredRef.current = true;
     flushSave();
+  }
+
+  function onTitleFocus() {
+    userManuallyBlurredRef.current = false;
+    shouldRestoreFocusRef.current = true;
+  }
+
+  function onContentFocus() {
+    userManuallyBlurredRef.current = false;
+    shouldRestoreFocusRef.current = true;
+    captureSelection();
   }
 
   function insertAtCursor(text) {
@@ -91,19 +148,33 @@ export default function BlockEditorAuto({
       setContent(c => c + text);
       return;
     }
+    captureSelection();
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
     setContent(c => c.slice(0, start) + text + c.slice(end));
     requestAnimationFrame(() => {
-      ta.selectionStart = ta.selectionEnd = start + text.length;
+      const pos = start + text.length;
+      selectionRef.current = { start: pos, end: pos };
+      if (document.activeElement === ta) {
+        ta.selectionStart = ta.selectionEnd = pos;
+      }
     });
   }
 
   function replaceOnce(target, replacement) {
+    captureSelection();
     setContent(c => {
       const idx = c.indexOf(target);
       if (idx === -1) return c;
-      return c.slice(0, idx) + replacement + c.slice(idx + target.length);
+      const before = c.slice(0, idx);
+      const after = c.slice(idx + target.length);
+      const next = before + replacement + after;
+      const pos = before.length + replacement.length;
+      selectionRef.current = { start: pos, end: pos };
+      return next;
+    });
+    requestAnimationFrame(() => {
+      restoreSelection();
     });
   }
 
@@ -148,6 +219,14 @@ export default function BlockEditorAuto({
     }
   }
 
+  // 内容变化后如果应该保持焦点，尝试恢复（避免渲染造成的失焦）
+  useEffect(() => {
+    if (!block) return;
+    requestAnimationFrame(() => {
+      ensureFocusAfterSave();
+    });
+  }, [content, title, block?.id]);
+
   if (!block) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-slate-400">
@@ -169,9 +248,11 @@ export default function BlockEditorAuto({
           placeholder="标题..."
           value={title}
           disabled={block.optimistic}
+          onFocus={onTitleFocus}
           onChange={e => {
             setTitle(e.target.value);
             setTitleManuallyEdited(true);
+            shouldRestoreFocusRef.current = true;
           }}
           onBlur={onBlur}
         />
@@ -211,7 +292,15 @@ export default function BlockEditorAuto({
             value={content}
             placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
             disabled={block.optimistic}
-            onChange={e => setContent(e.target.value)}
+            onChange={e => {
+              setContent(e.target.value);
+              shouldRestoreFocusRef.current = true;
+              userManuallyBlurredRef.current = false;
+              captureSelection();
+            }}
+            onFocus={onContentFocus}
+            onClick={captureSelection}
+            onKeyUp={captureSelection}
             onBlur={onBlur}
           />
         </div>
