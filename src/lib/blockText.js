@@ -13,7 +13,7 @@ export function deriveExcerpt(block) {
   if (!block) return "";
   const lines = (block.content || "").split("\n");
   if (lines.length > 1) {
-    lines.shift(); // 去掉第一行（视为标题）
+    lines.shift(); // 去掉第一行
   }
   const rest = lines.join(" ").replace(/[#>*`!_\[\]\(\)]/g, " ");
   return rest.trim().slice(0, 60);
