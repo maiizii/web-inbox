@@ -4,6 +4,8 @@ import { apiUploadImage } from "../../api/cloudflare.js";
 import { useToast } from "../../hooks/useToast.jsx";
 import { renderMarkdown } from "../../lib/markdown.js";
 
+const DEBUG_IMG = false;
+
 export default function BlockEditorAuto({
   block,
   onChange,
@@ -21,21 +23,19 @@ export default function BlockEditorAuto({
 
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
-  const padTopRef = useRef(0);
-
-  const lastPersisted = useRef({ title: "", content: "" });
-  const [previewHtml, setPreviewHtml] = useState("");
-
+  const selectionRef = useRef({ start: null, end: null });
   const userManuallyBlurredRef = useRef(false);
   const shouldRestoreFocusRef = useRef(false);
-  const selectionRef = useRef({ start: null, end: null });
+  const lastPersisted = useRef({ title: "", content: "" });
 
-  /* 预览 */
+  const [previewHtml, setPreviewHtml] = useState("");
+
+  /* ---------- 预览 ---------- */
   useEffect(() => {
     if (showPreview) setPreviewHtml(renderMarkdown(content));
   }, [content, showPreview]);
 
-  /* 切换 block */
+  /* ---------- 切换 Block ---------- */
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
@@ -50,7 +50,7 @@ export default function BlockEditorAuto({
     syncLineNumberPadTop();
   }, [block?.id]);
 
-  /* 自动标题 */
+  /* ---------- 自动标题 ---------- */
   useEffect(() => {
     if (!block) return;
     if (!titleManuallyEdited && !title && content) {
@@ -63,7 +63,7 @@ export default function BlockEditorAuto({
     (title !== lastPersisted.current.title ||
       content !== lastPersisted.current.content);
 
-  /* 光标 */
+  /* ---------- 选区 & 焦点 ---------- */
   function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -90,7 +90,7 @@ export default function BlockEditorAuto({
     }
   }
 
-  /* 保存 */
+  /* ---------- 保存逻辑 ---------- */
   async function doSave() {
     if (!block || !dirty || block.optimistic) return;
     setSaving(true);
@@ -117,11 +117,21 @@ export default function BlockEditorAuto({
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [title, content, debouncedSave, dirty]);
 
-  function onBlur() { userManuallyBlurredRef.current = true; flushSave(); }
-  function onTitleFocus() { userManuallyBlurredRef.current = false; shouldRestoreFocusRef.current = true; }
-  function onContentFocus() { userManuallyBlurredRef.current = false; shouldRestoreFocusRef.current = true; captureSel(); }
+  function onBlur() {
+    userManuallyBlurredRef.current = true;
+    flushSave();
+  }
+  function onTitleFocus() {
+    userManuallyBlurredRef.current = false;
+    shouldRestoreFocusRef.current = true;
+  }
+  function onContentFocus() {
+    userManuallyBlurredRef.current = false;
+    shouldRestoreFocusRef.current = true;
+    captureSel();
+  }
 
-  /* 行号：逻辑行 1:1 */
+  /* ---------- 行号（逻辑行） ---------- */
   function getLineNumbersString(text) {
     if (text === "") return "1";
     return text.split("\n").map((_, i) => i + 1).join("\n");
@@ -133,17 +143,14 @@ export default function BlockEditorAuto({
     const inner = lineNumbersInnerRef.current;
     if (!ta || !inner) return;
     const padTop = parseFloat(getComputedStyle(ta).paddingTop) || 0;
-    padTopRef.current = padTop;
     inner.style.top = padTop + "px";
   }
-
   function onTextareaScroll(e) {
     const scrollTop = e.target.scrollTop;
     if (lineNumbersInnerRef.current) {
       lineNumbersInnerRef.current.style.transform = `translateY(${-scrollTop}px)`;
     }
   }
-
   useEffect(() => {
     syncLineNumberPadTop();
     const onResize = () => syncLineNumberPadTop();
@@ -151,10 +158,13 @@ export default function BlockEditorAuto({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  /* 插入 / 替换 */
+  /* ---------- 文本插入 / 替换工具 ---------- */
   function insertAtCursor(text) {
     const ta = textareaRef.current;
-    if (!ta) { setContent(c => c + text); return; }
+    if (!ta) {
+      setContent(c => c + text);
+      return;
+    }
     captureSel();
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
@@ -167,22 +177,77 @@ export default function BlockEditorAuto({
       }
     });
   }
-  function replaceOnce(target, replacement) {
-    captureSel();
-    setContent(c => {
-      const idx = c.indexOf(target);
-      if (idx === -1) return c;
-      const before = c.slice(0, idx);
-      const after = c.slice(idx + target.length);
-      const next = before + replacement + after;
-      const pos = before.length + replacement.length;
-      selectionRef.current = { start: pos, end: pos };
-      return next;
-    });
-    requestAnimationFrame(restoreSel);
+
+  /* ---------- 图片上传（核心重写） ---------- */
+  async function immediatePersistAfterImage(newContent) {
+    if (!block || block.optimistic) return;
+    try {
+      onChange && onChange(block.id, { content: newContent, title, optimistic: true });
+      const payload = { title, content: newContent };
+      let real;
+      try {
+        real = await onImmediateSave(block.id, payload);
+      } catch (e) {
+        if (safeUpdateFallback) {
+          real = await safeUpdateFallback(block.id, payload, e);
+        } else throw e;
+      }
+      lastPersisted.current = { title, content: newContent };
+    } catch (e) {
+      toast.push(e.message || "图片保存失败", { type: "error" });
+    }
   }
 
-  /* 粘贴 / 拖拽 图片 */
+  async function uploadOne(file) {
+    if (!file || !block) return;
+    const currentBlockId = block.id;
+    const tempId = "uploading-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+
+    // 占位符（不加末尾换行，减少被意外编辑的概率）
+    const placeholder = `![${tempId}](uploading)`;
+
+    setContent(prev => {
+      // 若末尾不是换行且不是开头，则加一个换行再插入
+      const needsLeadingNL = prev.length > 0 && !prev.endsWith("\n");
+      const insertion = needsLeadingNL ? `\n${placeholder}` : placeholder;
+      if (DEBUG_IMG) console.log("[img] insert placeholder", insertion);
+      return prev + insertion + "\n"; // 始终在结尾补一个换行，便于继续输入
+    });
+
+    try {
+      const img = await apiUploadImage(file);
+      if (DEBUG_IMG) console.log("[img] upload success", img);
+
+      // 如果用户切换了 block，放弃替换（避免写错 block）
+      if (!block || block.id !== currentBlockId) {
+        if (DEBUG_IMG) console.log("[img] block changed during upload, abort replace");
+        return;
+      }
+
+      setContent(prev => {
+        const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
+        const replaced = prev.replace(re, `![image](${img.url})`);
+        if (DEBUG_IMG) console.log("[img] replaced placeholder count:", prev === replaced ? 0 : 1);
+        // 立即持久化
+        immediatePersistAfterImage(replaced);
+        return replaced;
+      });
+
+      toast.push("图片已上传", { type: "success" });
+    } catch (e) {
+      if (DEBUG_IMG) console.error("[img] upload failed", e);
+      // 失败也要替换占位，防止残留 uploading
+      setContent(prev => {
+        const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
+        const replaced = prev.replace(re, "![失败](#)");
+        immediatePersistAfterImage(replaced);
+        return replaced;
+      });
+      toast.push(e.message || "图片上传失败", { type: "error" });
+    }
+  }
+
+  /* ---------- 粘贴 / 拖拽 ---------- */
   const handlePaste = useCallback(async (e) => {
     if (!block) return;
     const items = Array.from(e.clipboardData.items).filter(it => it.type.startsWith("image/"));
@@ -204,22 +269,7 @@ export default function BlockEditorAuto({
     }
   }, [block]);
 
-  async function uploadOne(file) {
-    if (!file) return;
-    const tempId = "uploading-" + Date.now() + "-" + Math.random().toString(16).slice(2);
-    const placeholder = `![${tempId}](uploading)\n`;
-    insertAtCursor("\n" + placeholder);
-    try {
-      const img = await apiUploadImage(file);
-      replaceOnce(placeholder, `![image](${img.url})\n`);
-      flushSave();
-      toast.push("图片已上传", { type: "success" });
-    } catch (e) {
-      replaceOnce(placeholder, `![失败](#)\n`);
-      toast.push(e.message || "图片上传失败", { type: "error" });
-    }
-  }
-
+  /* ---------- 焦点恢复 ---------- */
   useEffect(() => {
     if (!block) return;
     requestAnimationFrame(maybeRestoreFocus);
@@ -243,8 +293,12 @@ export default function BlockEditorAuto({
           placeholder="标题..."
           value={title}
           disabled={block.optimistic}
-          onFocus={onTitleFocus}
-          onChange={e => { setTitle(e.target.value); setTitleManuallyEdited(true); shouldRestoreFocusRef.current = true; }}
+            onFocus={onTitleFocus}
+          onChange={e => {
+            setTitle(e.target.value);
+            setTitleManuallyEdited(true);
+            shouldRestoreFocusRef.current = true;
+          }}
           onBlur={onBlur}
         />
         <div className="flex items-center gap-2 text-xs">
@@ -265,7 +319,9 @@ export default function BlockEditorAuto({
                   : "已保存"}
           </div>
           <button
-            onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }}
+            onClick={() => {
+              if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id);
+            }}
             className="btn btn-outline !py-1 !px-3 text-xs"
           >
             删除
@@ -292,7 +348,7 @@ export default function BlockEditorAuto({
                 ref={textareaRef}
                 className="editor-textarea custom-scroll"
                 value={content}
-                placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片; 图片语法可写成 ![alt] (/url) 也会自动修正)"
+                placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
                 disabled={block.optimistic}
                 wrap="off"
                 onChange={e => {
