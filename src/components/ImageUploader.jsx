@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { apiUploadImage } from "../api/cloudflare.js";
 import Button from "./ui/Button.jsx";
-import { useToast } from "../hooks/useToast.js";
+import { useToast } from "../hooks/useToast.jsx";
 
 export default function ImageUploader({ onInserted }) {
   const ref = useRef();
