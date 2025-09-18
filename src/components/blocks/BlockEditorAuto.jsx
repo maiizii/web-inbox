@@ -22,19 +22,17 @@ export default function BlockEditorAuto({
   const lastPersisted = useRef({ title: "", content: "" });
   const [previewHtml, setPreviewHtml] = useState("");
 
-  // ---- 新增：焦点/光标管理 refs ----
-  const userManuallyBlurredRef = useRef(false);      // 用户是否主动失焦
-  const shouldRestoreFocusRef = useRef(false);       // 是否需要在保存后恢复焦点
-  const selectionRef = useRef({ start: null, end: null }); // 记录光标位置
+  // 焦点/光标保持
+  const userManuallyBlurredRef = useRef(false);
+  const shouldRestoreFocusRef = useRef(false);
+  const selectionRef = useRef({ start: null, end: null });
 
-  // 预览
   useEffect(() => {
     if (showPreview) {
       setPreviewHtml(renderMarkdown(content));
     }
   }, [content, showPreview]);
 
-  // block 切换
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
@@ -44,16 +42,15 @@ export default function BlockEditorAuto({
     };
     setError("");
     setTitleManuallyEdited(!!(block && block.title));
-    // 切换后重置焦点恢复意图
-    shouldRestoreFocusRef.current = false;
     userManuallyBlurredRef.current = false;
+    shouldRestoreFocusRef.current = false;
   }, [block?.id]);
 
-  // 标题自动一次性派生（前 10 字符）
+  // 自动派生标题（保留原逻辑）
   useEffect(() => {
     if (!block) return;
     if (!titleManuallyEdited && !title && content) {
-      setTitle(content.slice(0, 10));
+      setTitle(content.split("\n")[0].slice(0, 10));
     }
   }, [content, title, titleManuallyEdited, block]);
 
@@ -62,8 +59,7 @@ export default function BlockEditorAuto({
     (title !== lastPersisted.current.title ||
       content !== lastPersisted.current.content);
 
-  // ---- 光标工具 ----
-  function captureSelection() {
+  function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
     selectionRef.current = {
@@ -71,7 +67,7 @@ export default function BlockEditorAuto({
       end: ta.selectionEnd
     };
   }
-  function restoreSelection() {
+  function restoreSel() {
     const ta = textareaRef.current;
     if (!ta) return;
     const { start, end } = selectionRef.current;
@@ -81,15 +77,14 @@ export default function BlockEditorAuto({
       } catch {}
     }
   }
-  function ensureFocusAfterSave() {
-    // 只有在用户没有主动 blur 且标记需要时恢复
+  function maybeRestoreFocus() {
     if (userManuallyBlurredRef.current) return;
     if (!shouldRestoreFocusRef.current) return;
     const ta = textareaRef.current;
     if (!ta) return;
     if (document.activeElement !== ta) {
       ta.focus();
-      restoreSelection();
+      restoreSel();
     }
   }
 
@@ -113,10 +108,7 @@ export default function BlockEditorAuto({
       setError(e.message || "保存失败");
     } finally {
       setSaving(false);
-      // 保存完成后尝试恢复焦点
-      requestAnimationFrame(() => {
-        ensureFocusAfterSave();
-      });
+      requestAnimationFrame(maybeRestoreFocus);
     }
   }
 
@@ -139,7 +131,7 @@ export default function BlockEditorAuto({
   function onContentFocus() {
     userManuallyBlurredRef.current = false;
     shouldRestoreFocusRef.current = true;
-    captureSelection();
+    captureSel();
   }
 
   function insertAtCursor(text) {
@@ -148,7 +140,7 @@ export default function BlockEditorAuto({
       setContent(c => c + text);
       return;
     }
-    captureSelection();
+    captureSel();
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
     setContent(c => c.slice(0, start) + text + c.slice(end));
@@ -162,7 +154,7 @@ export default function BlockEditorAuto({
   }
 
   function replaceOnce(target, replacement) {
-    captureSelection();
+    captureSel();
     setContent(c => {
       const idx = c.indexOf(target);
       if (idx === -1) return c;
@@ -173,9 +165,7 @@ export default function BlockEditorAuto({
       selectionRef.current = { start: pos, end: pos };
       return next;
     });
-    requestAnimationFrame(() => {
-      restoreSelection();
-    });
+    requestAnimationFrame(restoreSel);
   }
 
   const handlePaste = useCallback(async (e) => {
@@ -219,12 +209,9 @@ export default function BlockEditorAuto({
     }
   }
 
-  // 内容变化后如果应该保持焦点，尝试恢复（避免渲染造成的失焦）
   useEffect(() => {
     if (!block) return;
-    requestAnimationFrame(() => {
-      ensureFocusAfterSave();
-    });
+    requestAnimationFrame(maybeRestoreFocus);
   }, [content, title, block?.id]);
 
   if (!block) {
@@ -286,23 +273,26 @@ export default function BlockEditorAuto({
 
       <div className="flex-1 flex min-h-0">
         <div className={"flex-1 flex flex-col " + (showPreview ? "w-1/2" : "w-full")}>
-          <textarea
-            ref={textareaRef}
-            className="flex-1 p-4 resize-none outline-none bg-transparent font-mono text-sm leading-5 custom-scroll"
-            value={content}
-            placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
-            disabled={block.optimistic}
-            onChange={e => {
-              setContent(e.target.value);
-              shouldRestoreFocusRef.current = true;
-              userManuallyBlurredRef.current = false;
-              captureSelection();
-            }}
-            onFocus={onContentFocus}
-            onClick={captureSelection}
-            onKeyUp={captureSelection}
-            onBlur={onBlur}
-          />
+          {/* 外层增加 overflow-auto 以便在高度固定时可滚动 */}
+          <div className="flex-1 min-h-0 overflow-auto">
+            <textarea
+              ref={textareaRef}
+              className="w-full h-full min-h-[400px] p-4 outline-none bg-transparent font-mono text-sm leading-5 custom-scroll resize-none overflow-auto"
+              value={content}
+              placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
+              disabled={block.optimistic}
+              onChange={e => {
+                setContent(e.target.value);
+                shouldRestoreFocusRef.current = true;
+                userManuallyBlurredRef.current = false;
+                captureSel();
+              }}
+              onFocus={onContentFocus}
+              onClick={captureSel}
+              onKeyUp={captureSel}
+              onBlur={onBlur}
+            />
+          </div>
         </div>
         {showPreview && (
           <div className="w-1/2 border-l border-slate-200 dark:border-slate-700 overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert">
