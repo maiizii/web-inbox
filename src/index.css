@@ -504,20 +504,22 @@ textarea {
 }
 
 
-/* ============ 多空行保留（Markdown 预览）=========== */
-.prose p.md-empty-line {
+/* ------ 多空行可视化（Markdown 预览） ------ */
+.prose .md-empty-line {
+  height: 0.9rem;      /* 每个空行的视觉高度，可调整 */
+  line-height: 0.9rem;
   margin: 0;
-  line-height: 1;
-  height: 0.9rem; /* 可调节空行视觉高度 */
+  padding: 0;
   pointer-events: none;
   user-select: none;
-  opacity: .55;
+  opacity: .0;         /* 设置为 0 只留空间，如需浅色占位改成 .4 */
+  /* border: 1px dashed #eee;  // 调试时可打开 */
 }
-.dark .prose p.md-empty-line {
-  opacity: .65;
+.dark .prose .md-empty-line {
+  opacity: .0;
 }
 
-/* ============ 带行号编辑器样式（若已存在则覆盖）=========== */
+/* ------ 行号编辑器（更新：关闭软换行） ------ */
 .editor-wrapper {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
   position: relative;
@@ -545,8 +547,8 @@ textarea {
   border-right: 1px solid #e2e8f0;
   background: transparent;
   box-sizing: border-box;
+  overflow: hidden;
   font-family: inherit;
-  overflow: hidden; /* 自己不滚动，内部通过 transform 同步 */
 }
 .dark .editor-line-numbers {
   border-color: #334155;
@@ -559,9 +561,9 @@ textarea {
   right: 0;
   white-space: pre;
   padding-right: 4px;
-  padding-left: 0;
   font-variant-numeric: tabular-nums;
 }
+
 .editor-textarea {
   flex: 1;
   border: none;
@@ -575,10 +577,11 @@ textarea {
   font-family: inherit;
   overflow: auto;
   tab-size: 2;
+  white-space: pre;    /* 关键：关闭自动换行 */
+  overflow-wrap: normal;
+  word-break: normal;
 }
-.editor-textarea:focus {
-  outline: none;
-}
+.editor-textarea:focus { outline: none; }
 
 .editor-textarea::-webkit-scrollbar {
   width: 10px;
