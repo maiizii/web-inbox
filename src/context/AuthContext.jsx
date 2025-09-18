@@ -1,92 +1,49 @@
-import { createContext, useContext, useState, useEffect } from "react";
-import { getCurrentUser, login, register, logout } from "../api/appwrite";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { apiLogin, apiLogout, apiRegister, apiMe } from "../api/cloudflare.js";
 
-// 创建认证上下文
-const AuthContext = createContext();
+const AuthCtx = createContext(null);
 
-// 认证提供者组件
-export const AuthProvider = ({ children }) => {
+export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  // 检查用户是否已登录
+  // 初始化拉取会话
   useEffect(() => {
-    const checkUser = async () => {
-      try {
-        const currentUser = await getCurrentUser();
-        setUser(currentUser);
-      } catch (error) {
-        console.error("检查用户状态失败:", error);
-        setUser(null);
-      } finally {
-        setIsLoading(false);
+    let cancelled = false;
+    (async () => {
+      const u = await apiMe();
+      if (!cancelled) {
+        setUser(u);
+        setLoading(false);
       }
-    };
-
-    checkUser();
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  // 登录函数
-  const handleLogin = async (email, password) => {
-    try {
-      setIsLoading(true);
-      await login(email, password);
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
-      return { success: true };
-    } catch (error) {
-      console.error("登录失败:", error);
-      return { success: false, error: error.message };
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const login = useCallback(async (email, password) => {
+    const res = await apiLogin(email, password);
+    // apiLogin 返回 { user: ... }
+    setUser(res.user);
+    return res.user;
+  }, []);
 
-  // 注册函数
-  const handleRegister = async (email, password, name) => {
-    try {
-      setIsLoading(true);
-      await register(email, password, name);
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
-      return { success: true };
-    } catch (error) {
-      console.error("注册失败:", error);
-      return { success: false, error: error.message };
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const register = useCallback(async (email, password, name) => {
+    const res = await apiRegister(email, password, name);
+    return res.user;
+  }, []);
 
-  // 登出函数
-  const handleLogout = async () => {
-    try {
-      setIsLoading(true);
-      await logout();
-      setUser(null);
-    } catch (error) {
-      console.error("登出失败:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const logout = useCallback(async () => {
+    await apiLogout();
+    setUser(null);
+  }, []);
 
-  const value = {
-    user,
-    isLoading,
-    login: handleLogin,
-    register: handleRegister,
-    logout: handleLogout,
-  };
+  return (
+    <AuthCtx.Provider value={{ user, setUser, loading, login, register, logout }}>
+      {children}
+    </AuthCtx.Provider>
+  );
+}
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
-
-// 使用认证上下文的 Hook
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth 必须在 AuthProvider 内部使用");
-  }
-  return context;
-};
+export function useAuth() {
+  return useContext(AuthCtx);
+}
