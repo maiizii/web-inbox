@@ -2,16 +2,15 @@ import React, { useEffect, useState, useMemo } from "react";
 import {
   apiListBlocks,
   apiCreateBlock,
+  apiCreateRaw,
   apiUpdateBlock,
   apiDeleteBlock
 } from "../api/cloudflare.js";
 import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
-import {
-  looksLikeTitleUnsupported,
-  looksLikeEmptyContentRejected
-} from "../lib/apiErrors.js";
+import { looksLikeTitleUnsupported } from "../lib/apiErrors.js";
+import { guessContentField, buildCreatePayloadCandidates } from "../lib/contentFieldGuess.js";
 
 export default function InboxPage() {
   const toast = useToast();
@@ -19,8 +18,9 @@ export default function InboxPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [contentField, setContentField] = useState("content");
 
-  // 初始化拉取
+  // 初始化
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -28,8 +28,11 @@ export default function InboxPage() {
         setLoading(true);
         const list = await apiListBlocks();
         if (!cancelled) {
-          setBlocks(list);
-          if (list.length) setSelectedId(list[list.length - 1].id);
+            setBlocks(list);
+            if (list.length) setSelectedId(list[list.length - 1].id);
+            const field = guessContentField(list);
+            setContentField(field);
+            console.log("[Blocks] guessed content field =", field);
         }
       } catch (e) {
         toast.push(e.message || "加载失败", { type: "error" });
@@ -65,8 +68,13 @@ export default function InboxPage() {
     return real;
   }
 
+  /**
+   * 自适应创建：
+   * 1. 基于推测字段名生成多套 payload（含包装、含/不含 title）
+   * 2. 逐个尝试，首个返回 block.id 的即成功
+   * 3. 全部失败：回滚 + 弹出错误（并在 console 列出每次失败的响应）
+   */
   async function createEmptyBlock() {
-    // 1. 添加乐观 block
     const optimistic = {
       id: "tmp-" + Date.now(),
       title: "",
@@ -78,63 +86,49 @@ export default function InboxPage() {
     setBlocks(prev => [...prev, optimistic]);
     setSelectedId(optimistic.id);
 
-    try {
-      let real;
-      // 尝试 1：空内容 + 空标题
+    const candidates = buildCreatePayloadCandidates(contentField, "", "");
+    const errors = [];
+
+    let real = null;
+    for (const payload of candidates) {
       try {
-        real = await apiCreateBlock("", "");
-      } catch (e1) {
-        // 尝试 2：title 不支持
-        if (looksLikeTitleUnsupported(e1)) {
-          try {
-            real = await apiCreateBlock("");
-          } catch (e2) {
-            // 尝试 3：如果空内容被拒绝，用一个占位空格
-            if (looksLikeEmptyContentRejected(e2)) {
-              try {
-                real = await apiCreateBlock(" ");
-              } catch (e3) {
-                // （可选）尝试发送 text 字段（如果后端接口命名不同）
-                // try { real = await apiFetchFallbackTextField(" "); } catch(_) {}
-                throw e3;
-              }
-            } else {
-              throw e2;
-            }
-          }
-        }
-        // 如果不是 title 不支持，检查是否空内容被拒绝
-        else if (looksLikeEmptyContentRejected(e1)) {
-          try {
-            real = await apiCreateBlock(" ");
-          } catch (e4) {
-            throw e4;
-          }
+        // 每次尝试打印调试信息
+        console.log("[Create Attempt] payload =", payload);
+        const r = await apiCreateRaw(payload);
+        if (r && r.block && r.block.id) {
+          real = r.block;
+          break;
         } else {
-          throw e1;
+          errors.push({ payload, error: "invalid response shape" });
         }
+      } catch (e) {
+        errors.push({ payload, error: e.message || String(e) });
+        // 如果 title 不支持，下一轮 payload 仍会覆盖掉 title，这里不额外处理
       }
+    }
 
-      // 校验 real
-      if (!real || !real.id) {
-        throw new Error("创建接口返回数据不完整");
-      }
-
-      // 替换乐观 block
-      setBlocks(prev =>
-        prev.map(b => (b.id === optimistic.id ? real : b))
-      );
-      setSelectedId(real.id);
-    } catch (err) {
+    if (!real) {
       // 回滚
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
       if (selectedId === optimistic.id) {
-        // 选择回最后一个真实 block
-        const realList = blocks.filter(b => b.id !== optimistic.id);
-        setSelectedId(realList.length ? realList[realList.length - 1].id : null);
+        const remain = blocks.filter(b => b.id !== optimistic.id);
+        setSelectedId(remain.length ? remain[remain.length - 1].id : null);
       }
-      toast.push(err.message || "创建失败", { type: "error" });
+      console.groupCollapsed("[Create Block Failure Details]");
+      console.table(errors.map(e => ({
+        payload: JSON.stringify(e.payload),
+        error: e.error
+      })));
+      console.groupEnd();
+      toast.push("创建失败（请查看控制台错误详情）", { type: "error" });
+      return;
     }
+
+    // 替换乐观
+    setBlocks(prev =>
+      prev.map(b => (b.id === optimistic.id ? real : b))
+    );
+    setSelectedId(real.id);
   }
 
   async function deleteBlock(id) {
@@ -158,9 +152,11 @@ export default function InboxPage() {
     if (!kw) return blocks;
     return blocks.filter(b =>
       (b.title || "").toLowerCase().includes(kw) ||
-      (b.content || "").toLowerCase().includes(kw)
+      (b.content || "").toLowerCase().includes(kw) ||
+      (typeof b[contentField] === "string" &&
+        b[contentField].toLowerCase().includes(kw))
     );
-  }, [blocks, q]);
+  }, [blocks, q, contentField]);
 
   return (
     <div className="h-[calc(100vh-56px)] flex">
@@ -172,15 +168,15 @@ export default function InboxPage() {
       />
       <main className="flex-1 flex flex-col">
         <div className="border-b border-slate-200 dark:border-slate-700 px-4 h-11 flex items-center gap-3">
-          <input
-            className="input !h-8 text-sm w-64"
-            placeholder="搜索..."
-            value={q}
-            onChange={e => setQ(e.target.value)}
-          />
-          <div className="ml-auto text-xs text-slate-400">
-            {loading ? "加载中..." : `${blocks.length} 个 Block`}
-          </div>
+            <input
+              className="input !h-8 text-sm w-64"
+              placeholder="搜索..."
+              value={q}
+              onChange={e => setQ(e.target.value)}
+            />
+            <div className="ml-auto text-xs text-slate-400">
+              {loading ? "加载中..." : `${blocks.length} 个 Block`}
+            </div>
         </div>
         <div className="flex-1 min-h-0">
           <BlockEditorAuto
