@@ -1,48 +1,67 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
-/**
- * 保留所有空行：将（非代码块内的）纯空行替换成占位符行，
- * 渲染后再转成 <p class="md-empty-line">。
- */
 marked.setOptions({
-  breaks: true,
-  gfm: true
+  gfm: true,
+  breaks: true
 });
 
-const BLANK_TOKEN = "BLANK_LINE_X7_PLACEHOLDER";
-const TOKEN_HTML_REGEX = new RegExp(`<p>${BLANK_TOKEN}</p>`, "g");
-const TOKEN_HTML_STRONG_REGEX = new RegExp(`<p><strong>${BLANK_TOKEN}</strong></p>`, "g"); // 保险
+const EXTRA_BLANK_TOKEN = "___EXTRA_BLANK_LINE_X7___";
+const TOKEN_P_REGEX = new RegExp(`<p>${EXTRA_BLANK_TOKEN}</p>`, "g");
 
-function preprocess(raw = "") {
-  if (!raw) return "";
-  const lines = raw.split("\n");
+/**
+ * 处理逻辑：
+ * - 扫描行，识别非代码围栏内的连续空行组。
+ * - 每组保留第一行为空行（让 Markdown 知道是段落分隔）。
+ * - 其余空行替换为占位符行（单独一行放 token）。
+ * - 渲染后将每个 <p>token</p> 变成视觉空行。
+ * - 代码块内的空行原样保留，不做替换。
+ */
+function injectExtraBlankTokens(raw = "") {
+  const lines = raw.replace(/\r/g, "").split("\n");
   let inFence = false;
-  const out = lines.map(line => {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
-    // 处理代码围栏（``` 或 ~~~ 开头）
-    if (/^```|^~~~/.test(trimmed)) {
+
+    // 代码围栏开关（``` 或 ~~~）
+    if (/^(```|~~~)/.test(trimmed)) {
       inFence = !inFence;
-      return line;
+      out.push(line);
+      continue;
     }
+
     if (!inFence && trimmed === "") {
-      // 将空行替换为占位符
-      return BLANK_TOKEN;
+      // 统计这一段连续空行的长度
+      let j = i;
+      while (j + 1 < lines.length && lines[j + 1].trim() === "") j++;
+      const groupLen = j - i + 1;
+
+      // 第一行空行保留为空字符串
+      out.push("");
+      // 其余空行变 token
+      for (let k = 1; k < groupLen; k++) {
+        out.push(EXTRA_BLANK_TOKEN);
+      }
+      i = j;
+      continue;
     }
-    return line;
-  });
+
+    out.push(line);
+  }
   return out.join("\n");
 }
 
 export function renderMarkdown(raw = "") {
   try {
-    const pre = preprocess(raw);
-    let html = marked.parse(pre);
+    const staged = injectExtraBlankTokens(raw || "");
+    let html = marked.parse(staged);
     html = DOMPurify.sanitize(html);
-    // 替换占位符段落为视觉空行
-    html = html
-      .replace(TOKEN_HTML_REGEX, `<p class="md-empty-line" data-empty-line="true">&nbsp;</p>`)
-      .replace(TOKEN_HTML_STRONG_REGEX, `<p class="md-empty-line" data-empty-line="true">&nbsp;</p>`);
+    html = html.replace(
+      TOKEN_P_REGEX,
+      `<p class="md-empty-line" data-empty-line="true">&nbsp;</p>`
+    );
     return html;
   } catch {
     return raw;
