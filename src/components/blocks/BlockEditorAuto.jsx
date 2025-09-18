@@ -21,10 +21,11 @@ export default function BlockEditorAuto({
 
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
+  const padTopRef = useRef(0);
+
   const lastPersisted = useRef({ title: "", content: "" });
   const [previewHtml, setPreviewHtml] = useState("");
 
-  // 焦点 / 光标管理
   const userManuallyBlurredRef = useRef(false);
   const shouldRestoreFocusRef = useRef(false);
   const selectionRef = useRef({ start: null, end: null });
@@ -34,7 +35,7 @@ export default function BlockEditorAuto({
     if (showPreview) setPreviewHtml(renderMarkdown(content));
   }, [content, showPreview]);
 
-  /* block 切换 */
+  /* 切换 block */
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
@@ -46,9 +47,10 @@ export default function BlockEditorAuto({
     setTitleManuallyEdited(!!(block && block.title));
     userManuallyBlurredRef.current = false;
     shouldRestoreFocusRef.current = false;
+    syncLineNumberPadTop();
   }, [block?.id]);
 
-  /* 自动派生标题 */
+  /* 自动标题 */
   useEffect(() => {
     if (!block) return;
     if (!titleManuallyEdited && !title && content) {
@@ -61,7 +63,7 @@ export default function BlockEditorAuto({
     (title !== lastPersisted.current.title ||
       content !== lastPersisted.current.content);
 
-  /* 光标控制 */
+  /* 光标 */
   function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -82,8 +84,7 @@ export default function BlockEditorAuto({
     if (userManuallyBlurredRef.current) return;
     if (!shouldRestoreFocusRef.current) return;
     const ta = textareaRef.current;
-    if (!ta) return;
-    if (document.activeElement !== ta) {
+    if (ta && document.activeElement !== ta) {
       ta.focus();
       restoreSel();
     }
@@ -116,42 +117,44 @@ export default function BlockEditorAuto({
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [title, content, debouncedSave, dirty]);
 
-  function onBlur() {
-    userManuallyBlurredRef.current = true;
-    flushSave();
-  }
-  function onTitleFocus() {
-    userManuallyBlurredRef.current = false;
-    shouldRestoreFocusRef.current = true;
-  }
-  function onContentFocus() {
-    userManuallyBlurredRef.current = false;
-    shouldRestoreFocusRef.current = true;
-    captureSel();
-  }
+  function onBlur() { userManuallyBlurredRef.current = true; flushSave(); }
+  function onTitleFocus() { userManuallyBlurredRef.current = false; shouldRestoreFocusRef.current = true; }
+  function onContentFocus() { userManuallyBlurredRef.current = false; shouldRestoreFocusRef.current = true; captureSel(); }
 
-  /* 行号（无软换行 => 逻辑行即可） */
+  /* 行号：逻辑行 1:1 */
   function getLineNumbersString(text) {
     if (text === "") return "1";
-    const arr = text.split("\n");
-    return arr.map((_, i) => i + 1).join("\n");
+    return text.split("\n").map((_, i) => i + 1).join("\n");
   }
   const lineNumbersString = getLineNumbersString(content);
+
+  function syncLineNumberPadTop() {
+    const ta = textareaRef.current;
+    const inner = lineNumbersInnerRef.current;
+    if (!ta || !inner) return;
+    const padTop = parseFloat(getComputedStyle(ta).paddingTop) || 0;
+    padTopRef.current = padTop;
+    inner.style.top = padTop + "px";
+  }
 
   function onTextareaScroll(e) {
     const scrollTop = e.target.scrollTop;
     if (lineNumbersInnerRef.current) {
-      lineNumbersInnerRef.current.style.transform = `translateY(-${scrollTop}px)`;
+      lineNumbersInnerRef.current.style.transform = `translateY(${-scrollTop}px)`;
     }
   }
 
-  /* 插入 / 替换（图片上传占位） */
+  useEffect(() => {
+    syncLineNumberPadTop();
+    const onResize = () => syncLineNumberPadTop();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  /* 插入 / 替换 */
   function insertAtCursor(text) {
     const ta = textareaRef.current;
-    if (!ta) {
-      setContent(c => c + text);
-      return;
-    }
+    if (!ta) { setContent(c => c + text); return; }
     captureSel();
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
@@ -241,11 +244,7 @@ export default function BlockEditorAuto({
           value={title}
           disabled={block.optimistic}
           onFocus={onTitleFocus}
-          onChange={e => {
-            setTitle(e.target.value);
-            setTitleManuallyEdited(true);
-            shouldRestoreFocusRef.current = true;
-          }}
+          onChange={e => { setTitle(e.target.value); setTitleManuallyEdited(true); shouldRestoreFocusRef.current = true; }}
           onBlur={onBlur}
         />
         <div className="flex items-center gap-2 text-xs">
@@ -266,9 +265,7 @@ export default function BlockEditorAuto({
                   : "已保存"}
           </div>
           <button
-            onClick={() => {
-              if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id);
-            }}
+            onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }}
             className="btn btn-outline !py-1 !px-3 text-xs"
           >
             删除
@@ -295,7 +292,7 @@ export default function BlockEditorAuto({
                 ref={textareaRef}
                 className="editor-textarea custom-scroll"
                 value={content}
-                placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
+                placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片; 图片语法可写成 ![alt] (/url) 也会自动修正)"
                 disabled={block.optimistic}
                 wrap="off"
                 onChange={e => {
