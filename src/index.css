@@ -49,3 +49,15 @@
 .prose img {
   @apply rounded-md shadow;
 }
+/* 自定义滚动条（调试面板更易看） */
+.custom-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100,116,139,0.4);
+  border-radius: 4px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100,116,139,0.6);
+}
