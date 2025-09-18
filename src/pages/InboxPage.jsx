@@ -1,25 +1,11 @@
-import { useAuth } from "../context/AuthContext";
-import Inbox from "../components/Inbox";
+import React from "react";
+import Inbox from "../components/Inbox.jsx";
+import { ErrorBoundary } from "../components/ErrorBoundary.jsx";
 
-const InboxPage = () => {
-  const { isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">加载中...</p>
-        </div>
-      </div>
-    );
-  }
-
+export default function InboxPage() {
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <ErrorBoundary>
       <Inbox />
-    </div>
+    </ErrorBoundary>
   );
-};
-
-export default InboxPage;
+}
