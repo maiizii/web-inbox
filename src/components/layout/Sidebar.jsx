@@ -1,5 +1,4 @@
 import React from "react";
-import { deriveTitle, deriveExcerpt } from "../../lib/blockText.js";
 
 export default function Sidebar({
   blocks,
@@ -12,7 +11,7 @@ export default function Sidebar({
       <div className="p-3 border-b border-slate-200 dark:border-slate-700 flex gap-2">
         <button
           onClick={onCreate}
-          className="flex-1 btn btn-primary !py-1 !text-sm"
+            className="flex-1 btn btn-primary !py-1 !text-sm"
         >
           新建
         </button>
@@ -26,9 +25,16 @@ export default function Sidebar({
         <ul className="text-sm">
           {blocks.map(b => {
             const isActive = b.id === selectedId;
-            const title = deriveTitle(b) || "(无标题)";
-            const excerpt = deriveExcerpt(b);
+            const raw = (b.content || "").replace(/\r/g, "");
+            const lines = raw.split("\n");
+            const line1 = (lines[0] || "").trim();
+            // 第二行作为辅助摘要，如果没有第二行则留空
+            const line2 = (lines[1] || "").trim();
+
+            const title = line1 || "(无标题)";
+            const excerpt = line2.slice(0, 60);
             const time = new Date(b.updated_at || b.created_at).toLocaleString();
+
             return (
               <li key={b.id}>
                 <button
@@ -51,7 +57,9 @@ export default function Sidebar({
                     {title}{b.optimistic && " · …"}
                   </div>
                   <div className="mt-0.5 text-[10px] text-slate-400 flex justify-between gap-2">
-                    <span className="truncate max-w-[110px]">{excerpt}</span>
+                    <span className="truncate max-w-[110px]">
+                      {excerpt}
+                    </span>
                     <span className="shrink-0">{time}</span>
                   </div>
                 </button>
