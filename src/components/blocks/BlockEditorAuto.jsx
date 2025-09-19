@@ -12,6 +12,8 @@ import { Undo2, Redo2 } from "lucide-react";
 const MAX_HISTORY = 200;
 const HISTORY_GROUP_MS = 800;
 const INDENT = "  "; // 两个空格
+const MIN_RATIO = 0.15;
+const MAX_RATIO = 0.85;
 
 export default function BlockEditorAuto({
   block,
@@ -34,15 +36,15 @@ export default function BlockEditorAuto({
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : 0.5;
-    return isNaN(v) ? 0.5 : clamp(v, 0.15, 0.85);
+    return isNaN(v) ? 0.5 : clamp(v, MIN_RATIO, MAX_RATIO);
   });
-  const [draggingSplit, setDraggingSplit] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [lineNumbers, setLineNumbers] = useState("1");
   const [previewHtml, setPreviewHtml] = useState("");
 
   /* ---------------- Refs ---------------- */
-  const rootRef = useRef(null);                // 整个组件
-  const splitContainerRef = useRef(null);      // 仅分屏区域（用于测量）
+  const rootRef = useRef(null);
+  const splitContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -51,9 +53,7 @@ export default function BlockEditorAuto({
   const shouldRestoreFocusRef = useRef(false);
   const lastPersisted = useRef({ content: "" });
   const currentBlockIdRef = useRef(block?.id || null);
-  const dragMetaRef = useRef(null);
-
-  // 历史
+  const dragInitialRef = useRef(null); // { rect, startRatio }
   const historyRef = useRef([]);
   const historyIndexRef = useRef(-1);
   const lastHistoryPushTimeRef = useRef(0);
@@ -66,9 +66,7 @@ export default function BlockEditorAuto({
   const canRedo = historyIndexRef.current < historyRef.current.length - 1;
 
   /* ---------------- Utils ---------------- */
-  function clamp(v, a, b) {
-    return Math.min(b, Math.max(a, v));
-  }
+  function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
   function escapeHtml(str) {
     return str
       .replace(/&/g, "&amp;")
@@ -77,7 +75,7 @@ export default function BlockEditorAuto({
       .replace(/"/g, "&quot;");
   }
 
-  // 仅解析图片，支持相对路径/绝对路径，其它 markdown 仍显示纯文本
+  // 仅解析图片，支持相对/绝对URL
   function renderPlainWithImages(raw) {
     if (!raw) return "<span class='text-slate-400'>暂无内容</span>";
     const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
@@ -90,20 +88,17 @@ export default function BlockEditorAuto({
       out += escapeHtml(before);
       const safeAlt = escapeHtml(alt || "");
       const safeUrl = escapeHtml(url);
-      out += `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" class="inline-block max-w-full border border-slate-200 dark:border-slate-600 rounded-md my-1" />`;
+      out += `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" class="preview-img" />`;
       lastIndex = m.index + full.length;
     }
     out += escapeHtml(raw.slice(lastIndex));
     return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
   }
 
-  function updatePreview(text) {
-    setPreviewHtml(renderPlainWithImages(text));
-  }
-
-  function updateLineNums(text) {
-    if (!text) { setLineNumbers("1"); return; }
-    setLineNumbers(text.split("\n").map((_, i) => i + 1).join("\n"));
+  function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
+  function updateLineNums(txt) {
+    if (!txt) { setLineNumbers("1"); return; }
+    setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
   }
 
   /* ---------------- History ---------------- */
@@ -111,10 +106,9 @@ export default function BlockEditorAuto({
     if (isRestoringHistoryRef.current) return;
     const now = Date.now();
     const since = now - lastHistoryPushTimeRef.current;
-    const lastSnap =
-      historyIndexRef.current >= 0
-        ? historyRef.current[historyIndexRef.current]
-        : undefined;
+    const lastSnap = historyIndexRef.current >= 0
+      ? historyRef.current[historyIndexRef.current]
+      : undefined;
 
     if (!forceSeparate && since < HISTORY_GROUP_MS) {
       if (lastSnap !== newContent && historyIndexRef.current >= 0) {
@@ -137,30 +131,26 @@ export default function BlockEditorAuto({
 
   function restoreHistory(delta) {
     if (!historyRef.current.length) return;
-    const nextIndex = historyIndexRef.current + delta;
-    if (nextIndex < 0 || nextIndex >= historyRef.current.length) return;
-    historyIndexRef.current = nextIndex;
-    const snap = historyRef.current[nextIndex];
+    const next = historyIndexRef.current + delta;
+    if (next < 0 || next >= historyRef.current.length) return;
+    historyIndexRef.current = next;
+    const snap = historyRef.current[next];
     isRestoringHistoryRef.current = true;
     setContent(snap);
     updateLineNums(snap);
     updatePreview(snap);
-    requestAnimationFrame(() => {
-      isRestoringHistoryRef.current = false;
-    });
+    requestAnimationFrame(() => { isRestoringHistoryRef.current = false; });
   }
 
   function handleUndoRedoKey(e) {
     const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
-    const ctrl = isMac ? e.metaKey : e.ctrlKey;
-    if (!ctrl) return;
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    if (!mod) return;
     if (e.key === "z" || e.key === "Z") {
       e.preventDefault();
-      if (e.shiftKey) restoreHistory(+1);
-      else restoreHistory(-1);
+      if (e.shiftKey) restoreHistory(+1); else restoreHistory(-1);
     } else if (e.key === "y" || e.key === "Y") {
-      e.preventDefault();
-      restoreHistory(+1);
+      e.preventDefault(); restoreHistory(+1);
     }
   }
 
@@ -180,17 +170,12 @@ export default function BlockEditorAuto({
   }, [block?.id]);
 
   /* ---------------- Effects: preview / mode ---------------- */
+  useEffect(() => { updatePreview(content); }, [content]);
   useEffect(() => {
-    updatePreview(content);
-  }, [content]);
-
-  useEffect(() => {
-    const key = previewMode === "vertical"
-      ? "editorSplit_vertical"
-      : "editorSplit_horizontal";
+    const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : splitRatio;
-    setSplitRatio(isNaN(v) ? 0.5 : clamp(v, 0.15, 0.85));
+    setSplitRatio(isNaN(v) ? 0.5 : clamp(v, MIN_RATIO, MAX_RATIO));
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
@@ -211,8 +196,7 @@ export default function BlockEditorAuto({
     if (!shouldRestoreFocusRef.current) return;
     const ta = textareaRef.current;
     if (ta && document.activeElement !== ta) {
-      ta.focus();
-      restoreSel();
+      ta.focus(); restoreSel();
     }
   }
   useEffect(() => {
@@ -224,9 +208,8 @@ export default function BlockEditorAuto({
   async function doSave() {
     if (!block || block.optimistic) return;
     if (!dirty) return;
-    const savedBlock = block.id;
-    setSaving(true);
-    setError("");
+    const saveId = block.id;
+    setSaving(true); setError("");
     const payload = { content };
     try {
       onChange && onChange(block.id, { content });
@@ -237,15 +220,15 @@ export default function BlockEditorAuto({
         if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err);
         else throw err;
       }
-      if (currentBlockIdRef.current === savedBlock) {
+      if (currentBlockIdRef.current === saveId) {
         lastPersisted.current = { content };
       }
     } catch (err) {
-      if (currentBlockIdRef.current === savedBlock) {
+      if (currentBlockIdRef.current === saveId) {
         setError(err.message || "保存失败");
       }
     } finally {
-      if (currentBlockIdRef.current === savedBlock) {
+      if (currentBlockIdRef.current === saveId) {
         setSaving(false);
         requestAnimationFrame(maybeRestoreFocus);
       }
@@ -254,10 +237,7 @@ export default function BlockEditorAuto({
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
 
-  function onBlur() {
-    userManuallyBlurredRef.current = true;
-    flushSave();
-  }
+  function onBlur() { userManuallyBlurredRef.current = true; flushSave(); }
   function onContentFocus() {
     userManuallyBlurredRef.current = false;
     shouldRestoreFocusRef.current = true;
@@ -274,8 +254,7 @@ export default function BlockEditorAuto({
   }
   function handleEditorScroll(e) {
     if (lineNumbersInnerRef.current) {
-      lineNumbersInnerRef.current.style.transform =
-        `translateY(${-e.target.scrollTop}px)`;
+      lineNumbersInnerRef.current.style.transform = `translateY(${-e.target.scrollTop}px)`;
     }
   }
   useEffect(() => {
@@ -284,6 +263,9 @@ export default function BlockEditorAuto({
     window.addEventListener("resize", r);
     return () => window.removeEventListener("resize", r);
   }, []);
+  useEffect(() => { // 内容变化也再同步一次，避免行高差异初次未对齐
+    syncLineNumbersPadding();
+  }, [content]);
 
   /* ---------------- Paste / Drop image ---------------- */
   async function persistAfterImage(newContent) {
@@ -313,6 +295,8 @@ export default function BlockEditorAuto({
       const nl = prev && !prev.endsWith("\n") ? "\n" : "";
       const nc = prev + nl + placeholder + "\n";
       pushHistory(nc, true);
+      updateLineNums(nc);
+      updatePreview(nc);
       return nc;
     });
     try {
@@ -324,6 +308,8 @@ export default function BlockEditorAuto({
           "g"
         );
         const replaced = prev.replace(re, `![image](${img.url})`);
+        updateLineNums(replaced);
+        updatePreview(replaced);
         persistAfterImage(replaced);
         return replaced;
       });
@@ -335,6 +321,8 @@ export default function BlockEditorAuto({
           "g"
         );
         const replaced = prev.replace(re, "![失败](#)");
+        updateLineNums(replaced);
+        updatePreview(replaced);
         persistAfterImage(replaced);
         return replaced;
       });
@@ -368,13 +356,10 @@ export default function BlockEditorAuto({
 
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
-
     const text = content;
-    // 选区所在的完整行
     const lineStartIdx = text.lastIndexOf("\n", start - 1) + 1;
     const lineEndIdx = text.indexOf("\n", end);
     const effectiveEnd = lineEndIdx === -1 ? text.length : lineEndIdx;
-
     const before = text.slice(0, lineStartIdx);
     const target = text.slice(lineStartIdx, effectiveEnd);
     const after = text.slice(effectiveEnd);
@@ -444,24 +429,34 @@ export default function BlockEditorAuto({
     handleIndentKey(e);
   }
 
-  /* ---------------- Split Drag (修复版) ---------------- */
+  /* ---------------- Split Drag ---------------- */
   function startDrag(e) {
     if (!showPreview) return;
     e.preventDefault();
     const container = splitContainerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    dragMetaRef.current = { rect };
-    setDraggingSplit(true);
+    dragInitialRef.current = { rect, startRatio: splitRatio };
+    setDragging(true);
     document.body.classList.add("editor-resizing");
     window.addEventListener("mousemove", onDragMove);
     window.addEventListener("mouseup", stopDrag);
     window.addEventListener("touchmove", onDragMove, { passive: false });
     window.addEventListener("touchend", stopDrag);
+    window.addEventListener("keydown", escCancel, { once: true });
   }
+
+  function escCancel(evt) {
+    if (evt.key === "Escape") {
+      if (dragInitialRef.current) {
+        setSplitRatio(dragInitialRef.current.startRatio);
+      }
+      stopDrag();
+    }
+  }
+
   function onDragMove(e) {
-    if (!draggingSplit || !dragMetaRef.current) return;
-    const rect = dragMetaRef.current.rect;
+    if (!dragging || !dragInitialRef.current) return;
     let clientX, clientY;
     if (e.touches && e.touches[0]) {
       clientX = e.touches[0].clientX;
@@ -471,16 +466,19 @@ export default function BlockEditorAuto({
       clientX = e.clientX;
       clientY = e.clientY;
     }
+    const { rect } = dragInitialRef.current;
     if (previewMode === "vertical") {
       const ratio = (clientX - rect.left) / rect.width;
-      setSplitRatio(clamp(ratio, 0.15, 0.85));
+      setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
     } else {
       const ratio = (clientY - rect.top) / rect.height;
-      setSplitRatio(clamp(ratio, 0.15, 0.85));
+      setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
     }
   }
+
   function stopDrag() {
-    setDraggingSplit(false);
+    if (!dragging) return;
+    setDragging(false);
     document.body.classList.remove("editor-resizing");
     window.removeEventListener("mousemove", onDragMove);
     window.removeEventListener("mouseup", stopDrag);
@@ -489,17 +487,16 @@ export default function BlockEditorAuto({
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     localStorage.setItem(key, String(splitRatio));
   }
+
   function resetSplit() {
     setSplitRatio(0.5);
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     localStorage.setItem(key, "0.5");
   }
+
   useEffect(() => {
-    return () => {
-      if (draggingSplit) stopDrag();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draggingSplit]);
+    return () => { if (dragging) stopDrag(); };
+  }, [dragging]);
 
   /* ---------------- Content Change ---------------- */
   function handleContentChange(v) {
@@ -553,7 +550,7 @@ export default function BlockEditorAuto({
             <Redo2 size={16} />
           </button>
 
-          <button
+            <button
             type="button"
             onClick={() => setShowPreview(p => !p)}
             className="btn-outline-modern !px-3 !py-1.5"
@@ -608,9 +605,9 @@ export default function BlockEditorAuto({
           className={
             showPreview
               ? previewMode === "vertical"
-                ? "h-full flex flex-col"
-                : "w-full flex flex-col"
-              : "flex-1 flex flex-col"
+                ? "h-full flex flex-col min-h-0"
+                : "w-full flex flex-col min-h-0"
+              : "flex-1 flex flex-col min-h-0"
           }
           style={
             showPreview
@@ -620,7 +617,7 @@ export default function BlockEditorAuto({
               : {}
           }
         >
-          <div className="flex-1 relative overflow-hidden">
+          <div className="flex-1 relative overflow-hidden min-h-0">
             <div className="absolute inset-0 flex overflow-hidden">
               {/* 行号列 */}
               <div className="editor-line-numbers">
@@ -662,27 +659,26 @@ export default function BlockEditorAuto({
           </div>
         </div>
 
-        {/* 分隔条（支持鼠标+触摸，双击重置） */}
+        {/* 分隔条 */}
         {showPreview && (
           <div
             className={`split-divider ${
               previewMode === "vertical" ? "split-vertical" : "split-horizontal"
-            } ${draggingSplit ? "dragging" : ""}`}
+            } ${dragging ? "dragging" : ""}`}
             onMouseDown={startDrag}
-            onPointerDown={startDrag}
             onTouchStart={startDrag}
             onDoubleClick={resetSplit}
             title="拖动调整比例，双击恢复 50%"
           />
         )}
 
-        {/* 预览区（纯文本 + 图片识别） */}
+        {/* 预览区 */}
         {showPreview && (
           <div
             className={
               previewMode === "vertical"
-                ? "h-full overflow-auto custom-scroll p-4 preview-plain"
-                : "w-full overflow-auto custom-scroll p-4 preview-plain"
+                ? "h-full flex flex-col min-h-0 preview-plain"
+                : "w-full flex flex-col min-h-0 preview-plain"
             }
             style={
               previewMode === "vertical"
@@ -690,10 +686,12 @@ export default function BlockEditorAuto({
                 : { height: `${(1 - splitRatio) * 100}%` }
             }
           >
-            <div
-              className="font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
-            />
+            <div className="flex-1 overflow-auto custom-scroll px-4 py-4">
+              <div
+                className="font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
+            </div>
           </div>
         )}
       </div>
