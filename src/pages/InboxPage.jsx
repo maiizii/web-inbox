@@ -9,14 +9,19 @@ import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
 
-const DEBUG_SELECTION = false;
-
 export default function InboxPage() {
   const toast = useToast();
   const [blocks, setBlocks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [sortMode, setSortMode] = useState(
+    () => localStorage.getItem("sortMode") || "created"
+  );
+
+  useEffect(() => {
+    localStorage.setItem("sortMode", sortMode);
+  }, [sortMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,9 +42,24 @@ export default function InboxPage() {
     return () => { cancelled = true; };
   }, [toast]);
 
-  useEffect(() => {
-    if (DEBUG_SELECTION) console.log("[sel] selectedId =", selectedId);
-  }, [selectedId]);
+  const sortedBlocks = useMemo(() => {
+    const arr = [...blocks];
+    if (sortMode === "updated") {
+      arr.sort((a, b) => new Date(a.updated_at || 0) - new Date(b.updated_at || 0));
+    } else {
+      arr.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    }
+    return arr;
+  }, [blocks, sortMode]);
+
+  const filteredBlocks = useMemo(() => {
+    const kw = q.trim().toLowerCase();
+    if (!kw) return sortedBlocks;
+    return sortedBlocks.filter(b =>
+      (b.title || "").toLowerCase().includes(kw) ||
+      (b.content || "").toLowerCase().includes(kw)
+    );
+  }, [sortedBlocks, q]);
 
   const selected = useMemo(
     () => blocks.find(b => b.id === selectedId) || null,
@@ -52,7 +72,6 @@ export default function InboxPage() {
 
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
-    // 合并，保留 created_at 等旧字段
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
     return real;
   }
@@ -98,48 +117,28 @@ export default function InboxPage() {
     }
   }
 
-  const filteredBlocks = useMemo(() => {
-    const kw = q.trim().toLowerCase();
-    if (!kw) return blocks;
-    return blocks.filter(b =>
-      (b.title || "").toLowerCase().includes(kw) ||
-      (b.content || "").toLowerCase().includes(kw) ||
-      Object.values(b).some(v => typeof v === "string" && v.toLowerCase().includes(kw))
-    );
-  }, [blocks, q]);
-
   return (
-    <div className="h-[calc(100vh-56px)] flex">
+    <div className="flex flex-1 overflow-hidden">
       <Sidebar
         blocks={filteredBlocks}
         selectedId={selectedId}
-        onSelect={id => {
-          if (DEBUG_SELECTION) console.log("[sel] user select", id);
-          setSelectedId(id);
-        }}
+        onSelect={setSelectedId}
         onCreate={createEmptyBlock}
+        sortMode={sortMode}
+        onToggleSort={() =>
+          setSortMode(m => (m === "created" ? "updated" : "created"))
+        }
+        query={q}
+        onQueryChange={setQ}
       />
-      <main className="flex-1 flex flex-col">
-        <div className="border-b border-slate-200 dark:border-slate-700 px-4 h-11 flex items-center gap-3">
-          <input
-            className="input !h-8 text-sm w-64"
-            placeholder="搜索..."
-            value={q}
-            onChange={e => setQ(e.target.value)}
-          />
-          <div className="ml-auto text-xs text-slate-400">
-            {loading ? "加载中..." : `${blocks.length} 个 Block`}
-          </div>
-        </div>
-        <div className="flex-1 min-h-0">
-          <BlockEditorAuto
-            block={selected}
-            onChange={optimisticChange}
-            onDelete={deleteBlock}
-            onImmediateSave={persistUpdate}
-          />
-        </div>
-      </main>
+      <div className="flex-1 min-h-0">
+        <BlockEditorAuto
+          block={selected}
+          onChange={optimisticChange}
+          onDelete={deleteBlock}
+          onImmediateSave={persistUpdate}
+        />
+      </div>
     </div>
   );
 }
