@@ -681,3 +681,40 @@ a:hover { color: var(--color-primary-hover); }
 /* ==========================================================================
    END
    ========================================================================== */
+/* 省略：保持你上一版统一现代风格的全部内容（请替换为当前最新版） */
+/* === 下面只展示需要新增/确认存在的 Split divider 样式，可合并到你的 index.css === */
+
+/* 分割条 */
+.split-divider {
+  position: relative;
+  flex: 0 0 auto;
+  background: linear-gradient(180deg,#e2e8f0,#cbd5e1);
+  transition: background 120ms ease;
+  z-index: 20;
+}
+.dark .split-divider {
+  background: linear-gradient(180deg,#334155,#1e293b);
+}
+.split-vertical {
+  width: 6px;
+  cursor: col-resize;
+}
+.split-horizontal {
+  height: 6px;
+  cursor: row-resize;
+}
+.split-divider::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:transparent;
+  transition: background 120ms ease;
+}
+.split-divider:hover::after,
+.split-divider.dragging::after {
+  background: rgba(99,102,241,0.15);
+}
+.dark .split-divider:hover::after,
+.dark .split-divider.dragging::after {
+  background: rgba(99,102,241,0.30);
+}
