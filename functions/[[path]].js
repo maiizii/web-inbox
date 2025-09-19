@@ -1,11 +1,11 @@
 // Cloudflare Pages Functions - Catch all routes
-// Handles /api/*, other paths go to static assets / SPA.
-// Improvements:
-//  - PBKDF2 iterations configurable via env.PBKDF2_ITER (capped <= 100000)
-//  - Proper HttpError status propagation
-//  - Allow empty string block content (only missing field invalid)
-//  - updateBlock returns created_at
-//  - Registration requires inviteCode = env.INVITE_CODE || "WebtipS"
+// API: /api/* 其他路径交给静态资源
+// 功能点：
+//  - 统一错误返回 JSON
+//  - PBKDF2(<=100000) 可通过 env.PBKDF2_ITER 配置
+//  - 注册强制邀请码 (env.INVITE_CODE || "WebtipS")
+//  - Blocks 允许空字符串内容
+//  - updateBlock 返回 created_at, 防止前端排序错乱
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 const SESSION_COOKIE = "sid";
@@ -17,14 +17,12 @@ function json(obj, status = 200, extraHeaders = {}) {
     headers: { ...JSON_HEADERS, ...extraHeaders }
   });
 }
-
 class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
   }
 }
-
 async function parseJson(request) {
   try {
     return await request.json();
@@ -32,7 +30,6 @@ async function parseJson(request) {
     throw new HttpError(400, "JSON 解析失败");
   }
 }
-
 function parseCookie(str) {
   return Object.fromEntries(
     str.split(/;\s*/).filter(Boolean).map(c => {
@@ -42,26 +39,22 @@ function parseCookie(str) {
     })
   );
 }
-
 function setSessionCookie(token, ttlSec) {
-  const cookie = `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${ttlSec}`;
-  return { "Set-Cookie": cookie };
+  return {
+    "Set-Cookie": `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${ttlSec}`
+  };
 }
-
 function clearSessionCookie() {
-  return { "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` };
+  return {
+    "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
+  };
 }
-
 function generateToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   let str = btoa(String.fromCharCode(...bytes));
   return str.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-
-function b64(u8) {
-  return btoa(String.fromCharCode(...u8));
-}
-
+function b64(u8) { return btoa(String.fromCharCode(...u8)); }
 function b64ToBytes(b64str) {
   const bin = atob(b64str);
   const arr = new Uint8Array(bin.length);
@@ -73,9 +66,7 @@ function b64ToBytes(b64str) {
 export async function onRequest(context) {
   const { request, env, next } = context;
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/")) {
-    return next();
-  }
+  if (!url.pathname.startsWith("/api/")) return next();
   try {
     return await handleApi(request, env);
   } catch (e) {
@@ -93,6 +84,7 @@ async function handleApi(request, env) {
   const { pathname } = url;
   const method = request.method.toUpperCase();
 
+  // Health
   if (pathname === "/api/health" && method === "GET") {
     return json({ ok: true, ts: Date.now() });
   }
@@ -148,8 +140,8 @@ async function register(request, env) {
   const { email, password, name, inviteCode } = await parseJson(request);
   if (!email || !password) throw new HttpError(400, "缺少 email 或 password");
 
-  const REQUIRED_CODE = env.INVITE_CODE || "WebtipS";
-  if (!inviteCode || inviteCode !== REQUIRED_CODE) {
+  const REQUIRED = env.INVITE_CODE || "WebtipS";
+  if (!inviteCode || inviteCode !== REQUIRED) {
     throw new HttpError(400, "邀请码无效");
   }
 
@@ -212,13 +204,11 @@ async function createBlock(request, env, userId) {
   let content = body.content;
   if (content == null) content = "";
   if (typeof content !== "string") content = String(content);
-
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await env.DB.prepare(
     "INSERT INTO blocks (id, user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
   ).bind(id, userId, content, now, now).run();
-
   return json({ block: { id, content, created_at: now, updated_at: now } }, 201);
 }
 
@@ -230,20 +220,15 @@ async function updateBlock(request, env, userId, blockId) {
   let content = body.content;
   if (content == null) content = "";
   if (typeof content !== "string") content = String(content);
-
   const owned = await env.DB.prepare(
     "SELECT id, created_at FROM blocks WHERE id = ? AND user_id = ?"
   ).bind(blockId, userId).first();
   if (!owned) throw new HttpError(404, "不存在或无权限");
-
   const now = new Date().toISOString();
   await env.DB.prepare(
     "UPDATE blocks SET content = ?, updated_at = ? WHERE id = ?"
   ).bind(content, now, blockId).run();
-
-  return json({
-    block: { id: blockId, content, created_at: owned.created_at, updated_at: now }
-  });
+  return json({ block: { id: blockId, content, created_at: owned.created_at, updated_at: now } });
 }
 
 async function deleteBlock(env, userId, blockId) {
@@ -258,26 +243,19 @@ async function uploadImage(request, env, userId) {
   const ct = request.headers.get("Content-Type") || "";
   if (!ct.startsWith("multipart/form-data"))
     throw new HttpError(400, "需要 multipart/form-data");
-
   const formData = await request.formData();
   const file = formData.get("file");
   if (!file || typeof file === "string") throw new HttpError(400, "未找到文件");
-
   const buf = await file.arrayBuffer();
-  const size = buf.byteLength;
-  if (size > 2 * 1024 * 1024) throw new HttpError(400, "文件过大 (>2MB)");
-
+  if (buf.byteLength > 2 * 1024 * 1024) throw new HttpError(400, "文件过大 (>2MB)");
   const id = crypto.randomUUID();
   const mime = file.type || "application/octet-stream";
   const created_at = new Date().toISOString();
-
   await env.DB.prepare(
     "INSERT INTO images (id, user_id, mime, size, created_at) VALUES (?, ?, ?, ?, ?)"
-  ).bind(id, userId, mime, size, created_at).run();
-
+  ).bind(id, userId, mime, buf.byteLength, created_at).run();
   await env.KV.put(`image:${id}`, buf);
-
-  return json({ image: { id, mime, size, url: `/api/images/${id}`, created_at } }, 201);
+  return json({ image: { id, mime, size: buf.byteLength, url: `/api/images/${id}`, created_at } }, 201);
 }
 
 async function getImage(env, userId, id) {
@@ -286,10 +264,8 @@ async function getImage(env, userId, id) {
   ).bind(id).first();
   if (!row) throw new HttpError(404, "不存在");
   if (row.user_id !== userId) throw new HttpError(403, "无权限");
-
   const data = await env.KV.get(`image:${id}`, "arrayBuffer");
   if (!data) throw new HttpError(404, "内容缺失");
-
   return new Response(data, {
     headers: {
       "Content-Type": row.mime,
@@ -312,19 +288,16 @@ async function getSessionFromRequest(request, env) {
   }
   return { token, ...obj };
 }
-
 async function getUserById(env, id) {
   if (!id) return null;
   return await env.DB.prepare(
     "SELECT id, email, name, created_at FROM users WHERE id = ?"
   ).bind(id).first();
 }
-
 function publicUser(u) {
   if (!u) return null;
   return { id: u.id, email: u.email, name: u.name, created_at: u.created_at };
 }
-
 function requireAuth(user) {
   if (!user) throw new HttpError(401, "未认证");
 }
@@ -334,7 +307,6 @@ function getIterations(env) {
   const raw = parseInt(env.PBKDF2_ITER || "100000", 10);
   return Math.min(raw > 0 ? raw : 100000, 100000);
 }
-
 async function hashPassword(password, env) {
   const iterations = getIterations(env);
   const enc = new TextEncoder();
@@ -350,7 +322,6 @@ async function hashPassword(password, env) {
   const hash = new Uint8Array(hashBuffer);
   return `pbkdf2$${iterations}$${b64(salt)}$${b64(hash)}`;
 }
-
 async function verifyPassword(password, stored) {
   try {
     const [scheme, iterStr, saltB64, hashB64] = stored.split("$");
@@ -373,7 +344,6 @@ async function verifyPassword(password, stored) {
     return false;
   }
 }
-
 function timingSafeEqual(a, b) {
   if (a.length !== b.length) return false;
   let diff = 0;
