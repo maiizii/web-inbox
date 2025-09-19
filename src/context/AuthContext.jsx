@@ -24,13 +24,14 @@ export function AuthProvider({ children }) {
     await apiLogin(email, password);
     await refreshUser();
   }
+
   async function logout() {
     try { await apiLogout(); } catch {}
     setUser(null);
   }
 
   return (
-    <AuthCtx.Provider value={{ user, loaded, loading: !loaded, refreshUser, login, logout }}>
+    <AuthCtx.Provider value={{ user, loaded, refreshUser, login, logout }}>
       {children}
     </AuthCtx.Provider>
   );
