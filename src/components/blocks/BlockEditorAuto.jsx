@@ -7,11 +7,21 @@ import React, {
 import { useDebouncedCallback } from "../../hooks/useDebouncedCallback.js";
 import { apiUploadImage } from "../../api/cloudflare.js";
 import { useToast } from "../../hooks/useToast.jsx";
-import { renderMarkdown } from "../../lib/markdown.js";
 
 /**
- * BlockEditorAuto (readonly title + draggable split + markdown shortcuts)
+ * BlockEditorAuto (纯文本预览 + 分割条拖动 + Undo/Redo + Tab/Shift+Tab)
+ * Props:
+ *  - block: { id, content, created_at, updated_at, position, optimistic? }
+ *  - onChange(id, patch)
+ *  - onDelete(id)
+ *  - onImmediateSave(id, {content})
+ *  - safeUpdateFallback?(id,payload,error)
  */
+
+const MAX_HISTORY = 200;
+const HISTORY_GROUP_MS = 800; // 组装输入的时间窗口
+const INDENT = "  "; // 两个空格
+
 export default function BlockEditorAuto({
   block,
   onChange,
@@ -21,28 +31,34 @@ export default function BlockEditorAuto({
 }) {
   const toast = useToast();
 
-  /* ================= State ================= */
+  // ---------------- State ----------------
   const [content, setContent] = useState(block?.content || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showPreview, setShowPreview] = useState(true);
   const [previewMode, setPreviewMode] = useState(
     () => localStorage.getItem("previewMode") || "vertical"
-  ); // vertical=左右 horizontal=上下
-  // 分割比例（0~1）
+  ); // vertical=左右, horizontal=上下
+
   const [splitRatio, setSplitRatio] = useState(() => {
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : 0.5;
-    return isNaN(v) ? 0.5 : Math.min(0.85, Math.max(0.15, v));
+    return isNaN(v) ? 0.5 : clamp(v, 0.15, 0.85);
   });
-  const [lineNumbers, setLineNumbers] = useState("1");
-  const [previewHtml, setPreviewHtml] = useState("");
 
-  // 拖拽状态
+  const [lineNumbers, setLineNumbers] = useState("1");
+  const [plainPreview, setPlainPreview] = useState("");
+
   const [draggingSplit, setDraggingSplit] = useState(false);
 
-  /* ================= Refs ================= */
+  // Undo/Redo
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(-1);
+  const lastHistoryPushTimeRef = useRef(0);
+  const isRestoringHistoryRef = useRef(false);
+
+  // ---------------- Refs ----------------
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -50,47 +66,135 @@ export default function BlockEditorAuto({
   const userManuallyBlurredRef = useRef(false);
   const shouldRestoreFocusRef = useRef(false);
   const lastPersisted = useRef({ content: "" });
-  const dragInfoRef = useRef(null);
+  const currentBlockIdRef = useRef(block?.id || null);
+  const dragMetaRef = useRef(null);
 
-  /* ================= Derived ================= */
+  // Derived
   const dirty = !!block && content !== lastPersisted.current.content;
-  const derivedTitle = (block?.content || "")
-    .split("\n")[0]
-    .slice(0, 64) || "(空)";
+  const derivedTitle = (block?.content || "").split("\n")[0].slice(0, 64) || "(空)";
 
-  /* ================= Effects: Block 切换 ================= */
+  // ---------------- Helpers ----------------
+  function clamp(v, a, b) {
+    return Math.min(b, Math.max(a, v));
+  }
+
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function updatePlainPreview(txt) {
+    // 纯文本预览：只做转义 + 换行 -> <br/>
+    setPlainPreview(
+      escapeHtml(txt || "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\n/g, "<br/>")
+    );
+  }
+
+  function updateLineNumbers(txt) {
+    if (!txt) { setLineNumbers("1"); return; }
+    setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
+  }
+
+  // ---------------- History (Undo/Redo) ----------------
+  function pushHistory(newContent, forceSeparate = false) {
+    if (isRestoringHistoryRef.current) return;
+    const now = Date.now();
+    const since = now - lastHistoryPushTimeRef.current;
+    const lastContent =
+      historyIndexRef.current >= 0
+        ? historyRef.current[historyIndexRef.current]
+        : undefined;
+    if (!forceSeparate && since < HISTORY_GROUP_MS && lastContent === newContent) {
+      // 不需要重复
+      return;
+    }
+    if (!forceSeparate && since < HISTORY_GROUP_MS && lastContent !== undefined) {
+      // 在时间窗口内且内容变了，直接替换当前快照
+      historyRef.current[historyIndexRef.current] = newContent;
+      lastHistoryPushTimeRef.current = now;
+      return;
+    }
+    // 剪掉 redo 分支
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      historyRef.current.splice(historyIndexRef.current + 1);
+    }
+    historyRef.current.push(newContent);
+    if (historyRef.current.length > MAX_HISTORY) {
+      historyRef.current.shift();
+    } else {
+      historyIndexRef.current++;
+    }
+    lastHistoryPushTimeRef.current = now;
+  }
+
+  function restoreHistory(delta) {
+    if (historyRef.current.length === 0) return;
+    const newIndex = historyIndexRef.current + delta;
+    if (newIndex < 0 || newIndex >= historyRef.current.length) return;
+    historyIndexRef.current = newIndex;
+    const snap = historyRef.current[newIndex];
+    isRestoringHistoryRef.current = true;
+    setContent(snap);
+    requestAnimationFrame(() => {
+      isRestoringHistoryRef.current = false;
+      updateLineNumbers(snap);
+      updatePlainPreview(snap);
+    });
+  }
+
+  function handleUndoRedoKey(e) {
+    const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+    const ctrl = isMac ? e.metaKey : e.ctrlKey;
+    if (!ctrl) return;
+    if (e.key === "z" || e.key === "Z") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        // Ctrl+Shift+Z / Cmd+Shift+Z redo
+        restoreHistory(+1);
+      } else {
+        restoreHistory(-1);
+      }
+    } else if (e.key === "y" || e.key === "Y") {
+      e.preventDefault();
+      restoreHistory(+1);
+    }
+  }
+
+  // ---------------- Effects: block 切换 ----------------
   useEffect(() => {
+    currentBlockIdRef.current = block?.id || null;
     setContent(block?.content || "");
     lastPersisted.current = { content: block?.content || "" };
     setError("");
     updateLineNumbers(block?.content || "");
+    updatePlainPreview(block?.content || "");
+    historyRef.current = [block?.content || ""];
+    historyIndexRef.current = 0;
+    lastHistoryPushTimeRef.current = Date.now();
+    userManuallyBlurredRef.current = false;
+    shouldRestoreFocusRef.current = false;
     requestAnimationFrame(syncLineNumbersPadding);
   }, [block?.id]);
 
-  /* ================= Effects: Preview ================= */
+  // ---------------- Effects: preview / mode / ratio ----------------
   useEffect(() => {
-    if (showPreview) setPreviewHtml(renderMarkdown(content));
-  }, [content, showPreview]);
+    updatePlainPreview(content);
+  }, [content]);
 
-  /* ================= Effects: Preview mode changes ================= */
   useEffect(() => {
-    // 切换模式时加载各自的 ratio
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : splitRatio;
-    setSplitRatio(isNaN(v) ? 0.5 : Math.min(0.85, Math.max(0.15, v)));
+    setSplitRatio(isNaN(v) ? 0.5 : clamp(v, 0.15, 0.85));
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
-  /* ================= 行号生成 ================= */
-  function updateLineNumbers(text) {
-    if (text === "") { setLineNumbers("1"); return; }
-    const lines = text.split("\n");
-    setLineNumbers(lines.map((_, i) => i + 1).join("\n"));
-  }
-  useEffect(() => { updateLineNumbers(content); }, [content]);
-
-  /* ================= 选区 / 焦点 ================= */
+  // ---------------- Selection / focus ----------------
   function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -98,9 +202,8 @@ export default function BlockEditorAuto({
   }
   function restoreSel() {
     const ta = textareaRef.current;
-    if (!ta) return;
     const { start, end } = selectionRef.current;
-    if (start == null || end == null) return;
+    if (!ta || start == null || end == null) return;
     try { ta.setSelectionRange(start, end); } catch {}
   }
   function maybeRestoreFocus() {
@@ -118,10 +221,11 @@ export default function BlockEditorAuto({
     requestAnimationFrame(maybeRestoreFocus);
   }, [block?.id]);
 
-  /* ================= 保存逻辑 ================= */
+  // ---------------- Save ----------------
   async function doSave() {
     if (!block || block.optimistic) return;
     if (!dirty) return;
+    const savedForBlock = block.id;
     setSaving(true);
     setError("");
     const payload = { content };
@@ -134,16 +238,24 @@ export default function BlockEditorAuto({
         if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err);
         else throw err;
       }
-      lastPersisted.current = { content };
+      // 若在保存期间用户切换了 block，不更新 lastPersisted（避免覆盖）
+      if (currentBlockIdRef.current === savedForBlock) {
+        lastPersisted.current = { content };
+      }
     } catch (err) {
-      setError(err.message || "保存失败");
+      if (currentBlockIdRef.current === savedForBlock) {
+        setError(err.message || "保存失败");
+      }
     } finally {
-      setSaving(false);
-      requestAnimationFrame(maybeRestoreFocus);
+      if (currentBlockIdRef.current === savedForBlock) {
+        setSaving(false);
+        requestAnimationFrame(maybeRestoreFocus);
+      }
     }
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
+
   function onBlur() {
     userManuallyBlurredRef.current = true;
     flushSave();
@@ -154,7 +266,7 @@ export default function BlockEditorAuto({
     captureSel();
   }
 
-  /* ================= 行号同步 ================= */
+  // ---------------- Scroll / line numbers ----------------
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
@@ -170,12 +282,12 @@ export default function BlockEditorAuto({
   }
   useEffect(() => {
     syncLineNumbersPadding();
-    const r = () => syncLineNumbersPadding();
-    window.addEventListener("resize", r);
-    return () => window.removeEventListener("resize", r);
+    const onResize = () => syncLineNumbersPadding();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  /* ================= 图片上传 ================= */
+  // ---------------- Paste / Drop images ----------------
   async function immediatePersistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -189,10 +301,12 @@ export default function BlockEditorAuto({
         else throw e;
       }
       lastPersisted.current = { content: newContent };
+      pushHistory(newContent, true);
     } catch (e) {
       toast.push(e.message || "图片保存失败", { type: "error" });
     }
   }
+
   async function uploadOne(file) {
     if (!file || !block) return;
     const currentId = block.id;
@@ -200,7 +314,9 @@ export default function BlockEditorAuto({
     const placeholder = `![${tempId}](uploading)`;
     setContent(prev => {
       const nl = prev.length > 0 && !prev.endsWith("\n") ? "\n" : "";
-      return prev + nl + placeholder + "\n";
+      const updated = prev + nl + placeholder + "\n";
+      pushHistory(updated, true);
+      return updated;
     });
     try {
       const img = await apiUploadImage(file);
@@ -228,201 +344,120 @@ export default function BlockEditorAuto({
       toast.push(err.message || "图片上传失败", { type: "error" });
     }
   }
+
   const handlePaste = useCallback(async e => {
     if (!block) return;
-    const items = Array.from(e.clipboardData.items).filter(it =>
-      it.type.startsWith("image/")
-    );
+    const items = Array.from(e.clipboardData.items).filter(it => it.type.startsWith("image/"));
     if (!items.length) return;
     e.preventDefault();
     for (const it of items) {
-      const file = it.getAsFile();
-      if (file) await uploadOne(file);
+      const f = it.getAsFile();
+      if (f) await uploadOne(f);
     }
   }, [block]);
+
   const handleDrop = useCallback(async e => {
     if (!block) return;
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f =>
-      f.type.startsWith("image/")
-    );
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
     if (!files.length) return;
     for (const f of files) await uploadOne(f);
   }, [block]);
 
-  /* ================= Markdown 快捷插入 ================= */
-  function replaceSelection(modifierFn) {
+  // ---------------- Tab / Shift+Tab ----------------
+  function handleIndentKey(e) {
+    if (e.key !== "Tab") return;
     const ta = textareaRef.current;
     if (!ta) return;
+    e.preventDefault();
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
     const before = content.slice(0, start);
     const sel = content.slice(start, end);
     const after = content.slice(end);
-    const { text, newStart, newEnd } = modifierFn(sel, { start, end });
-    const newContent = before + text + after;
-    setContent(newContent);
-    requestAnimationFrame(() => {
-      ta.focus();
-      ta.setSelectionRange(newStart, newEnd);
-      captureSel();
-    });
-  }
 
-  function insertBold() {
-    replaceSelection((sel) => {
-      if (!sel) {
-        return { text: "**粗体**", newStart: content.length + 2, newEnd: content.length + 4 };
-      }
-      const wrapped = sel.startsWith("**") && sel.endsWith("**")
-        ? sel.slice(2, -2)
-        : `**${sel}**`;
-      const newStart = selectionRef.current.start + (wrapped.startsWith("**") ? 2 : 0);
-      const newEnd = newStart + (sel.startsWith("**") && sel.endsWith("**") ? wrapped.length : sel.length);
-      return { text: wrapped, newStart, newEnd };
-    });
-  }
-
-  function insertCodeBlock() {
-    replaceSelection((sel) => {
-      if (!sel.includes("\n") && sel) {
-        const wrapped = "`" + sel + "`";
-        return {
-          text: wrapped,
-            newStart: selectionRef.current.start + 1,
-          newEnd: selectionRef.current.start + 1 + sel.length
-        };
-      }
-      const block = "```\n" + (sel || "code") + "\n```";
-      const base = selectionRef.current.start;
-      const newStart = base + 4;
-      const newEnd = newStart + (sel || "code").length;
-      return { text: block, newStart, newEnd };
-    });
-  }
-
-  function insertHeading() {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    // 找到当前行
-    const beforeAll = content.slice(0, start);
-    const lineStart = beforeAll.lastIndexOf("\n") + 1;
-    const lineEnd = content.indexOf("\n", start) === -1 ? content.length : content.indexOf("\n", start);
-    const line = content.slice(lineStart, lineEnd);
-    const match = line.match(/^(#{1,6})\s+/);
-    let newLine;
-    if (!match) {
-      newLine = "# " + line;
+    if (e.shiftKey) {
+      // 反缩进
+      const selLines = sel.split("\n");
+      let removedFirstLineChars = 0;
+      const newSelLines = selLines.map((line, idx) => {
+        if (line.startsWith(INDENT)) {
+          if (idx === 0) removedFirstLineChars = INDENT.length;
+          return line.slice(INDENT.length);
+        } else if (line.startsWith(" ")) {
+          if (idx === 0) removedFirstLineChars = 1;
+          return line.slice(1);
+        }
+        return line;
+      });
+      const newSel = newSelLines.join("\n");
+      const newContent = before + newSel + after;
+      setContent(newContent);
+      pushHistory(newContent);
+      requestAnimationFrame(() => {
+        const newStart = start - removedFirstLineChars;
+        const newEnd = newStart + newSel.length;
+        ta.focus();
+        ta.setSelectionRange(newStart, newEnd);
+        captureSel();
+      });
     } else {
-      const hashes = match[1];
-      if (hashes.length === 6) {
-        newLine = "# " + line.replace(/^#{1,6}\s+/, "");
-      } else {
-        newLine = "#".repeat(hashes.length + 1) + " " + line.replace(/^#{1,6}\s+/, "");
-      }
-    }
-    const newContent = content.slice(0, lineStart) + newLine + content.slice(lineEnd);
-    setContent(newContent);
-    requestAnimationFrame(() => {
-      const pos = lineStart + newLine.length;
-      ta.focus();
-      ta.setSelectionRange(pos, pos);
-      captureSel();
-    });
-  }
-
-  /* ================= Tab / Shift+Tab 缩进 ================= */
-  function handleKeyDown(e) {
-    if (e.key === "Tab") {
-      const ta = textareaRef.current;
-      if (!ta) return;
-      e.preventDefault();
-      const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      const before = content.slice(0, start);
-      const sel = content.slice(start, end);
-      const after = content.slice(end);
-      const INDENT = "  "; // 两空格缩进
-
-      if (e.shiftKey) {
-        // 反缩进：处理多行
-        const lines = sel.split("\n");
-        let removed = 0;
-        const newLines = lines.map(l => {
-          if (l.startsWith(INDENT)) {
-            removed += INDENT.length;
-            return l.slice(INDENT.length);
-          } else if (l.startsWith(" ")) {
-            removed += 1;
-            return l.slice(1);
-          }
-          return l;
-        });
-        const newSel = newLines.join("\n");
+      // 正缩进
+      if (sel.includes("\n")) {
+        const selLines = sel.split("\n");
+        const newSelLines = selLines.map(l => INDENT + l);
+        const newSel = newSelLines.join("\n");
         const newContent = before + newSel + after;
         setContent(newContent);
+        pushHistory(newContent);
         requestAnimationFrame(() => {
           ta.focus();
-          ta.setSelectionRange(start, start + newSel.length);
+          ta.setSelectionRange(start + INDENT.length, start + newSel.length);
           captureSel();
         });
       } else {
-        // 正向缩进
-        if (sel.includes("\n")) {
-          const lines = sel.split("\n");
-          const newLines = lines.map(l => INDENT + l);
-          const newSel = newLines.join("\n");
-          const newContent = before + newSel + after;
-          setContent(newContent);
-          requestAnimationFrame(() => {
+        const newContent = before + INDENT + sel + after;
+        setContent(newContent);
+        pushHistory(newContent);
+        requestAnimationFrame(() => {
+          const pos = start + INDENT.length;
             ta.focus();
-            ta.setSelectionRange(start + INDENT.length, start + newSel.length);
-            captureSel();
-          });
-        } else {
-          const newContent = before + INDENT + sel + after;
-          setContent(newContent);
-          requestAnimationFrame(() => {
-            ta.focus();
-            const pos = start + INDENT.length;
-            ta.setSelectionRange(pos, pos);
-            captureSel();
-          });
-        }
+          ta.setSelectionRange(pos, pos);
+          captureSel();
+        });
       }
     }
   }
 
-  /* ================= 分割条拖动 ================= */
+  // ---------------- Key handling ----------------
+  function handleKeyDown(e) {
+    // Undo/Redo
+    handleUndoRedoKey(e);
+    // Tab / Shift+Tab
+    handleIndentKey(e);
+  }
+
+  // ---------------- Split drag ----------------
   function startDrag(e) {
+    if (!showPreview) return;
     e.preventDefault();
+    const container = e.currentTarget.parentElement; // .editor-split-root
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    dragMetaRef.current = { rect };
     setDraggingSplit(true);
-    dragInfoRef.current = {
-      startX: e.clientX,
-      startY: e.clientY
-    };
     window.addEventListener("mousemove", onDragMove);
     window.addEventListener("mouseup", stopDrag);
   }
   function onDragMove(e) {
-    if (!draggingSplit) return;
+    if (!draggingSplit || !dragMetaRef.current) return;
+    const rect = dragMetaRef.current.rect;
     if (previewMode === "vertical") {
-      // 横向拖：取相对宽度
-      const container = e.target.ownerDocument.querySelector(".editor-split-root");
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
       const ratio = (e.clientX - rect.left) / rect.width;
-      const clamped = Math.min(0.85, Math.max(0.15, ratio));
-      setSplitRatio(clamped);
+      setSplitRatio(clamp(ratio, 0.15, 0.85));
     } else {
-      // vertical=上下? 此处 horizontal=上下
-      const container = e.target.ownerDocument.querySelector(".editor-split-root");
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
       const ratio = (e.clientY - rect.top) / rect.height;
-      const clamped = Math.min(0.85, Math.max(0.15, ratio));
-      setSplitRatio(clamped);
+      setSplitRatio(clamp(ratio, 0.15, 0.85));
     }
   }
   function stopDrag() {
@@ -432,14 +467,26 @@ export default function BlockEditorAuto({
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     localStorage.setItem(key, String(splitRatio));
   }
+  function resetSplit() {
+    setSplitRatio(0.5);
+    const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
+    localStorage.setItem(key, "0.5");
+  }
 
-  /* ================= 贴图 / 拖图事件 ================= */
   useEffect(() => {
     return () => {
       if (draggingSplit) stopDrag();
     };
   }, [draggingSplit]);
 
+  // ---------------- History push on typing ----------------
+  // 在输入时（onChange）及时 push（分组逻辑内部处理）
+  function handleContentChange(val) {
+    setContent(val);
+    pushHistory(val);
+  }
+
+  // ---------------- Early return ----------------
   if (!block) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-slate-400">
@@ -449,47 +496,20 @@ export default function BlockEditorAuto({
   }
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
+  // ---------------- Render ----------------
   return (
     <div
-      className="h-full flex flex-col"
+      className="h-full flex flex-col overflow-hidden"
       onPaste={handlePaste}
       onDrop={handleDrop}
       onDragOver={e => e.preventDefault()}
     >
-      {/* 工具栏 */}
+      {/* 顶部工具栏（无编辑标题/无 MD 快捷） */}
       <div className="flex items-center gap-3 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
-        <div className="flex-1 text-lg font-semibold truncate">
+        <div className="flex-1 text-lg font-semibold truncate select-none">
           {derivedTitle}
         </div>
-
         <div className="flex items-center gap-2 text-xs">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={insertBold}
-              className="btn-outline-modern !px-2.5 !py-1.5"
-              title="加粗"
-            >
-              B
-            </button>
-            <button
-              type="button"
-              onClick={insertCodeBlock}
-              className="btn-outline-modern !px-2.5 !py-1.5"
-              title="代码块 / 行内代码"
-            >
-              {"</>"}
-            </button>
-            <button
-              type="button"
-              onClick={insertHeading}
-              className="btn-outline-modern !px-2.5 !py-1.5"
-              title="标题级别循环"
-            >
-              H#
-            </button>
-          </div>
-
           <button
             type="button"
             onClick={() => setShowPreview(p => !p)}
@@ -497,7 +517,7 @@ export default function BlockEditorAuto({
           >
             {showPreview ? "隐藏预览" : "显示预览"}
           </button>
-          <button
+            <button
             type="button"
             onClick={() =>
               setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))
@@ -507,7 +527,6 @@ export default function BlockEditorAuto({
           >
             {previewMode === "vertical" ? "上下预览" : "左右预览"}
           </button>
-
           <div className="text-slate-400 select-none min-w-[64px] text-right">
             {saving
               ? "保存中"
@@ -521,7 +540,6 @@ export default function BlockEditorAuto({
               ? "待保存"
               : "已保存"}
           </div>
-
           <button
             onClick={() => {
               if (confirm("确定删除该 Block？")) {
@@ -535,7 +553,7 @@ export default function BlockEditorAuto({
         </div>
       </div>
 
-      {/* 主体分屏根容器 */}
+      {/* 主区域 */}
       <div
         className={`editor-split-root flex-1 min-h-0 flex ${
           showPreview
@@ -543,7 +561,7 @@ export default function BlockEditorAuto({
               ? "flex-row"
               : "flex-col"
             : "flex-col"
-        }`}
+        } overflow-hidden`}
       >
         {/* 编辑区 */}
         <div
@@ -562,7 +580,7 @@ export default function BlockEditorAuto({
               : {}
           }
         >
-          <div className="flex-1 relative">
+          <div className="flex-1 relative overflow-hidden">
             <div className="absolute inset-0 flex overflow-hidden">
               <div className="editor-line-numbers">
                 <pre
@@ -583,10 +601,10 @@ export default function BlockEditorAuto({
                   className="editor-textarea"
                   value={content}
                   disabled={disabledByCreation}
-                  placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片, Tab 缩进, Shift+Tab 反缩进)"
+                  placeholder="输入文本 (支持粘贴/拖拽图片, Tab 缩进, Shift+Tab 反缩进, Ctrl+Z / Ctrl+Y 撤销恢复)"
                   wrap="off"
                   onChange={e => {
-                    setContent(e.target.value);
+                    handleContentChange(e.target.value);
                     shouldRestoreFocusRef.current = true;
                     userManuallyBlurredRef.current = false;
                     captureSel();
@@ -602,25 +620,25 @@ export default function BlockEditorAuto({
           </div>
         </div>
 
-        {/* 分割条 */}
+        {/* 分隔条 */}
         {showPreview && (
           <div
             className={`split-divider ${
-              previewMode === "vertical"
-                ? "split-vertical"
-                : "split-horizontal"
+              previewMode === "vertical" ? "split-vertical" : "split-horizontal"
             } ${draggingSplit ? "dragging" : ""}`}
             onMouseDown={startDrag}
+            onDoubleClick={resetSplit}
+            title="拖动调整比例，双击恢复 50%"
           />
         )}
 
-        {/* 预览区 */}
+        {/* 预览区（纯文本） */}
         {showPreview && (
           <div
             className={
               previewMode === "vertical"
-                ? "h-full overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert"
-                : "w-full overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert"
+                ? "h-full overflow-auto custom-scroll p-4 preview-plain"
+                : "w-full overflow-auto custom-scroll p-4 preview-plain"
             }
             style={
               previewMode === "vertical"
@@ -629,9 +647,8 @@ export default function BlockEditorAuto({
             }
           >
             <div
-              dangerouslySetInnerHTML={{
-                __html: previewHtml || "<p class='text-slate-400'>暂无内容</p>"
-              }}
+              className="font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
+              dangerouslySetInnerHTML={{ __html: plainPreview || "<span class='text-slate-400'>暂无内容</span>" }}
             />
           </div>
         )}
