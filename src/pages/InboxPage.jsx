@@ -88,7 +88,7 @@ export default function InboxPage() {
     setBlocks(prev => [...prev, optimistic]);
     setSelectedId(optimistic.id);
     try {
-      const real = await apiCreateBlock("", "");
+      const real = await apiCreateBlock("");
       setBlocks(prev => prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b)));
       setSelectedId(real.id);
     } catch (e) {
