@@ -78,9 +78,7 @@ export default function AuthPage() {
           className="space-y-5 bg-white dark:bg-slate-800/90 p-8 rounded-xl shadow-lg border border-slate-200/70 dark:border-slate-700/60 backdrop-blur"
         >
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              邮箱
-            </label>
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">邮箱</label>
             <input
               className="input-modern"
               type="email"
@@ -92,9 +90,7 @@ export default function AuthPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              密码
-            </label>
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">密码</label>
             <input
               className="input-modern"
               type="password"
@@ -108,9 +104,7 @@ export default function AuthPage() {
           {mode === "register" && (
             <>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  昵称（可选）
-                </label>
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">昵称（可选）</label>
                 <input
                   className="input-modern"
                   value={name}
@@ -118,15 +112,13 @@ export default function AuthPage() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  邀请码
-                </label>
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">邀请码</label>
                 <input
                   className="input-modern"
                   required
                   value={inviteCode}
                   onChange={e => setInviteCode(e.target.value.trim())}
-                  placeholder="请输入邀请码"
+                  placeholder="输入邀请码"
                 />
               </div>
             </>
