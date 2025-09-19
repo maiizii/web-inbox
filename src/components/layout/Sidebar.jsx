@@ -14,7 +14,7 @@ export default function Sidebar({
   onDrop
 }) {
   return (
-    <aside className="w-72 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 backdrop-blur flex flex-col">
+    <aside className="w-[15rem] shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 backdrop-blur flex flex-col">
       <div className="p-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700">
         <button
           onClick={onCreate}
@@ -30,7 +30,7 @@ export default function Sidebar({
       <div className="px-3 pt-3">
         <input
           className="input-modern w-full"
-          placeholder="搜索..."
+            placeholder="搜索..."
           value={query}
           onChange={e => onQueryChange(e.target.value)}
         />
