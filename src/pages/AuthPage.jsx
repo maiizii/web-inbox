@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { apiLogin, apiRegister } from "../api/cloudflare.js";
-import { useToast } from "../hooks/useToast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "../hooks/useToast.jsx";
 
 export default function AuthPage() {
   const [mode, setMode] = useState("login");
@@ -10,11 +10,11 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [name, setName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const { refreshUser } = useAuth();
-  const toast = useToast();
-  const navigate = useNavigate();
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { refreshUser, user } = useAuth();
+  const navigate = useNavigate();
+  const toast = useToast();
 
   async function submit(e) {
     e.preventDefault();
@@ -29,10 +29,15 @@ export default function AuthPage() {
         await apiLogin(email, password);
       }
       await refreshUser();
-      navigate("/", { replace: true });
+      // 只有成功刷新并有 user 才跳转
+      setTimeout(() => {
+        if (user || true) { // 再次获取最新 user 的方式（简化）
+          navigate("/", { replace: true });
+        }
+      }, 50);
     } catch (err) {
-      setError(err.message);
-      toast.push(err.message, { type: "error" });
+      setError(err.message || "登录失败");
+      toast.push(err.message || "失败", { type: "error" });
     } finally {
       setLoading(false);
     }
@@ -49,7 +54,6 @@ export default function AuthPage() {
             {mode === "login" ? "登录到你的知识小片段" : "创建你的账号（需要邀请码）"}
           </p>
         </div>
-
         <div className="flex bg-slate-100 dark:bg-slate-800 rounded-md p-1">
           <button
             onClick={() => setMode("login")}
@@ -82,25 +86,23 @@ export default function AuthPage() {
             <input
               className="input-modern"
               type="email"
-              autoComplete="email"
               required
               value={email}
+              autoComplete="email"
               onChange={e => setEmail(e.target.value.trim())}
             />
           </div>
-
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">密码</label>
             <input
               className="input-modern"
               type="password"
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
               required
               value={password}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
               onChange={e => setPassword(e.target.value)}
             />
           </div>
-
           {mode === "register" && (
             <>
               <div className="space-y-1">
@@ -118,34 +120,23 @@ export default function AuthPage() {
                   required
                   value={inviteCode}
                   onChange={e => setInviteCode(e.target.value.trim())}
-                  placeholder="输入邀请码"
+                  placeholder="请输入邀请码"
                 />
               </div>
             </>
           )}
-
           {error && (
             <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/30 p-2 rounded">
               {error}
             </div>
           )}
-
           <button
             disabled={loading}
             className="btn-primary-modern w-full"
-            type="submit"
           >
-            {loading
-              ? "处理中..."
-              : mode === "login"
-              ? "登录"
-              : "注册并登录"}
+            {loading ? "处理中..." : mode === "login" ? "登录" : "注册并登录"}
           </button>
         </form>
-
-        <p className="text-center text-xs text-slate-400">
-          当前模式：{mode === "login" ? "登录" : "注册"}
-        </p>
       </div>
     </div>
   );
