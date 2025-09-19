@@ -39,10 +39,11 @@ export async function apiHealth() {
 }
 
 /* Blocks */
-export async function apiListBlocks() {
-  const raw = await apiFetch("/api/blocks");
+export async function apiListBlocks(sortMode = "position") {
+  const raw = await apiFetch(`/api/blocks?sort=${encodeURIComponent(sortMode)}`);
   return normList(raw);
 }
+
 export async function apiCreateBlock(content = "") {
   const raw = await apiFetch("/api/blocks", {
     method: "POST",
@@ -53,6 +54,7 @@ export async function apiCreateBlock(content = "") {
   if (!b) throw new Error("创建失败");
   return b;
 }
+
 export async function apiUpdateBlock(id, { content }) {
   const raw = await apiFetch(`/api/blocks/${id}`, {
     method: "PUT",
@@ -63,8 +65,17 @@ export async function apiUpdateBlock(id, { content }) {
   if (!b) throw new Error("更新失败");
   return b;
 }
+
 export async function apiDeleteBlock(id) {
   return apiFetch(`/api/blocks/${id}`, { method: "DELETE" });
+}
+
+export async function apiReorderBlocks(order) {
+  return apiFetch("/api/blocks/reorder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ order })
+  });
 }
 
 /* Images */
