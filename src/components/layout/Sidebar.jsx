@@ -1,26 +1,17 @@
 import React from "react";
-import { Plus, ArrowUpDown } from "lucide-react";
-
-const SORT_LABEL = {
-  position: "手动",
-  created: "创建",
-  updated: "编辑"
-};
+import { Plus } from "lucide-react";
 
 export default function Sidebar({
   blocks,
   selectedId,
   onSelect,
   onCreate,
-  sortMode,
-  onCycleSort,
   query,
   onQueryChange,
   draggingId,
   onDragStart,
   onDragOver,
-  onDrop,
-  manualMode
+  onDrop
 }) {
   return (
     <aside className="w-72 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 backdrop-blur flex flex-col">
@@ -32,14 +23,9 @@ export default function Sidebar({
           <Plus size={16} />
           新建
         </button>
-        <button
-          onClick={onCycleSort}
-          className="btn-outline-modern flex items-center gap-1 !px-3 !py-2 text-sm"
-          title="切换排序（手动 / 创建 / 编辑）"
-        >
-          <ArrowUpDown size={16} />
-          {SORT_LABEL[sortMode] || sortMode}
-        </button>
+        <div className="text-[11px] text-slate-500 dark:text-slate-400 ml-auto">
+          可拖拽排序
+        </div>
       </div>
       <div className="px-3 pt-3">
         <input
@@ -48,28 +34,25 @@ export default function Sidebar({
           value={query}
           onChange={e => onQueryChange(e.target.value)}
         />
-        {manualMode && (
-          <div className="text-[10px] mt-1 text-slate-400">
-            手动模式：可拖拽条目
-          </div>
-        )}
       </div>
       <div
         className="flex-1 overflow-auto custom-scroll px-2 pb-4 mt-2"
         onDragOver={e => e.preventDefault()}
         onDrop={onDrop}
       >
-        {blocks.map((b, index) => {
+        {blocks.map(b => {
           const firstLine = (b.content || "").split("\n")[0] || "(空)";
+          const derivedTitle = firstLine.slice(0, 64) || "(空)";
           const isSel = b.id === selectedId;
           const isDragging = b.id === draggingId;
+          const lastEdit = (b.updated_at || b.created_at || "").replace("T", " ").slice(5, 16);
           return (
             <div
               key={b.id}
-              draggable={manualMode}
+              draggable
               onDragStart={() => onDragStart && onDragStart(b.id)}
               onDragOver={e => onDragOver && onDragOver(e, b.id)}
-              className={`group rounded-lg mb-1 border text-left relative transition
+              className={`group rounded-lg mb-1 border text-left relative transition cursor-pointer
                 ${
                   isSel
                     ? "bg-gradient-to-r from-indigo-500/90 to-blue-500/90 text-white border-transparent shadow"
@@ -77,28 +60,18 @@ export default function Sidebar({
                 }
                 ${isDragging ? "opacity-60 ring-2 ring-indigo-400" : ""}
               `}
+              onClick={() => onSelect && onSelect(b.id)}
             >
-              <button
-                onClick={() => onSelect && onSelect(b.id)}
-                className="w-full text-left px-3 py-2"
-              >
-                <div className="font-medium truncate">
-                  {firstLine.slice(0, 32)}
+              <div className="px-3 pt-2 pb-1">
+                <div className="font-medium truncate text-sm">
+                  {derivedTitle}
                 </div>
-                <div
-                  className={`text-[10px] mt-1 flex justify-between ${
-                    isSel ? "text-white/80" : "text-slate-400 dark:text-slate-500"
-                  }`}
-                >
-                  <span>{(b.created_at || "").slice(5, 16).replace("T", " ")}</span>
-                  <span>U:{(b.updated_at || "").slice(5, 16).replace("T", " ")}</span>
+                <div className={`text-[10px] mt-1 ${
+                  isSel ? "text-white/80" : "text-slate-400 dark:text-slate-500"
+                }`}>
+                  最后编辑：{lastEdit}
                 </div>
-              </button>
-              {manualMode && (
-                <div className="absolute left-1 top-1 text-[10px] text-slate-400 cursor-grab group-hover:opacity-100 opacity-70 select-none">
-                  {index + 1}
-                </div>
-              )}
+              </div>
             </div>
           );
         })}
