@@ -20,6 +20,13 @@ export default function BlockEditorAuto({
   const [error, setError] = useState("");
   const [showPreview, setShowPreview] = useState(true);
   const [titleManuallyEdited, setTitleManuallyEdited] = useState(false);
+  const [previewMode, setPreviewMode] = useState(
+    () => localStorage.getItem("previewMode") || "vertical"
+  );
+
+  useEffect(() => {
+    localStorage.setItem("previewMode", previewMode);
+  }, [previewMode]);
 
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
@@ -30,12 +37,12 @@ export default function BlockEditorAuto({
 
   const [previewHtml, setPreviewHtml] = useState("");
 
-  /* ---------- 预览 ---------- */
+  /* 预览 */
   useEffect(() => {
     if (showPreview) setPreviewHtml(renderMarkdown(content));
   }, [content, showPreview]);
 
-  /* ---------- 切换 Block ---------- */
+  /* 切换 block */
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
@@ -50,7 +57,7 @@ export default function BlockEditorAuto({
     syncLineNumberPadTop();
   }, [block?.id]);
 
-  /* ---------- 自动标题 ---------- */
+  /* 自动标题 */
   useEffect(() => {
     if (!block) return;
     if (!titleManuallyEdited && !title && content) {
@@ -63,7 +70,7 @@ export default function BlockEditorAuto({
     (title !== lastPersisted.current.title ||
       content !== lastPersisted.current.content);
 
-  /* ---------- 选区 & 焦点 ---------- */
+  /* 选区/焦点 */
   function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -90,14 +97,13 @@ export default function BlockEditorAuto({
     }
   }
 
-  /* ---------- 保存逻辑 ---------- */
+  /* 保存 */
   async function doSave() {
     if (!block || !dirty || block.optimistic) return;
     setSaving(true);
     setError("");
     const payload = { title, content };
     try {
-      // 重要：更新时不再标记 optimistic，避免把已有 block 置为禁用
       onChange && onChange(block.id, { ...payload });
       let real;
       try {
@@ -132,7 +138,7 @@ export default function BlockEditorAuto({
     captureSel();
   }
 
-  /* ---------- 行号（逻辑行） ---------- */
+  /* 行号 */
   function getLineNumbersString(text) {
     if (text === "") return "1";
     return text.split("\n").map((_, i) => i + 1).join("\n");
@@ -159,7 +165,7 @@ export default function BlockEditorAuto({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  /* ---------- 文本插入 / 替换工具 ---------- */
+  /* 插入文本 */
   function insertAtCursor(text) {
     const ta = textareaRef.current;
     if (!ta) {
@@ -179,7 +185,7 @@ export default function BlockEditorAuto({
     });
   }
 
-  /* ---------- 图片上传（立即保存，无 optimistic 标记） ---------- */
+  /* 图片上传立即保存 */
   async function immediatePersistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -241,7 +247,6 @@ export default function BlockEditorAuto({
     }
   }
 
-  /* ---------- 粘贴 / 拖拽 ---------- */
   const handlePaste = useCallback(async (e) => {
     if (!block) return;
     const items = Array.from(e.clipboardData.items).filter(it => it.type.startsWith("image/"));
@@ -263,7 +268,6 @@ export default function BlockEditorAuto({
     }
   }, [block]);
 
-  /* ---------- 焦点恢复 ---------- */
   useEffect(() => {
     if (!block) return;
     requestAnimationFrame(maybeRestoreFocus);
@@ -273,7 +277,6 @@ export default function BlockEditorAuto({
     return <div className="flex items-center justify-center h-full text-sm text-slate-400">请选择左侧 Block 或点击“新建”</div>;
   }
 
-  // 仅在“正在创建的临时块”禁用（id 以 tmp- 开头且 optimistic）
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
   return (
@@ -287,16 +290,16 @@ export default function BlockEditorAuto({
       <div className="flex items-center gap-3 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
         <input
           className="text-xl font-semibold bg-transparent outline-none flex-1 placeholder-slate-400"
-            placeholder="标题..."
-            value={title}
-            disabled={disabledByCreation}
-            onFocus={onTitleFocus}
-            onChange={e => {
-              setTitle(e.target.value);
-              setTitleManuallyEdited(true);
-              shouldRestoreFocusRef.current = true;
-            }}
-            onBlur={onBlur}
+          placeholder="标题..."
+          value={title}
+          disabled={disabledByCreation}
+          onFocus={onTitleFocus}
+          onChange={e => {
+            setTitle(e.target.value);
+            setTitleManuallyEdited(true);
+            shouldRestoreFocusRef.current = true;
+          }}
+          onBlur={onBlur}
         />
         <div className="flex items-center gap-2 text-xs">
           <button
@@ -305,6 +308,14 @@ export default function BlockEditorAuto({
             className="px-2 py-1 border rounded hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             {showPreview ? "隐藏预览" : "显示预览"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))}
+            className="px-2 py-1 border rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+            title="切换预览布局"
+          >
+            {previewMode === "vertical" ? "上下预览" : "左右预览"}
           </button>
           <div className="text-slate-400 select-none min-w-[56px] text-right">
             {saving
@@ -316,10 +327,8 @@ export default function BlockEditorAuto({
                   : "已保存"}
           </div>
           <button
-            onClick={() => {
-              if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id);
-            }}
-            className="btn btn-outline !py-1 !px-3 text-xs"
+            onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }}
+            className="btn-outline-sm !py-1 !px-3"
           >
             删除
           </button>
@@ -327,11 +336,23 @@ export default function BlockEditorAuto({
       </div>
 
       {/* 主体 */}
-      <div className="flex-1 flex min-h-0">
+      <div className={`flex-1 flex min-h-0 ${
+        showPreview
+          ? previewMode === "vertical"
+            ? ""
+            : "flex-col"
+          : ""
+      }`}>
         {/* 编辑器 */}
-        <div className={"flex-1 flex flex-col " + (showPreview ? "w-1/2" : "w-full")}>
-          <div className="editor-wrapper">
-            <div className="editor-code-area">
+        <div className={
+          showPreview
+            ? previewMode === "vertical"
+              ? "flex-1 flex flex-col w-1/2"
+              : "flex-1 flex flex-col h-1/2"
+            : "flex-1 flex flex-col"
+        }>
+          <div className="editor-wrapper flex-1 flex flex-col">
+            <div className="editor-code-area flex-1 relative flex">
               <div className="editor-line-numbers">
                 <pre
                   ref={lineNumbersInnerRef}
@@ -366,7 +387,11 @@ export default function BlockEditorAuto({
 
         {/* 预览 */}
         {showPreview && (
-          <div className="w-1/2 border-l border-slate-200 dark:border-slate-700 overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert">
+          <div className={
+            previewMode === "vertical"
+              ? "w-1/2 border-l border-slate-200 dark:border-slate-700 overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert"
+              : "h-1/2 border-t border-slate-200 dark:border-slate-700 overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert"
+          }>
             <div
               dangerouslySetInnerHTML={{
                 __html: previewHtml || "<p class='text-slate-400'>暂无内容</p>"
