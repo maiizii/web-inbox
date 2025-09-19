@@ -433,3 +433,56 @@ body.editor-resizing,body.editor-resizing *{user-select:none!important;}
 /* ==========================================================================
    END
    ========================================================================== */
+
+/* 分隔栏 + 面板样式（把类名和组件内使用的保持一致） */
+.editor-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 200px; /* 根据需要调整 */
+  overflow: hidden;
+}
+
+.editor-pane {
+  overflow: auto;
+  background: var(--editor-bg, #fff);
+}
+
+.preview-pane {
+  overflow: auto;
+  background: var(--preview-bg, #fafafa);
+}
+
+/* splitter 可点击/拖拽区域 */
+.splitter {
+  width: 12px; /* 可拖拽 hit area */
+  cursor: col-resize;
+  position: relative;
+  z-index: 50; /* 确保没有被覆盖 */
+  touch-action: none; /* 对触摸设备重要，阻止默认滚动以处理 pointer events */
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  background: transparent;
+}
+
+/* 可视化的细线（可选） */
+.splitter::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: rgba(0,0,0,0.08);
+  border-radius: 2px;
+}
+.splitter:hover::before {
+  background: rgba(0,0,0,0.16);
+}
+
+/* 防止面板在拖拽时阻止事件：一般保持 pointer-events 默认即可 */
+.editor-pane, .preview-pane {
+  pointer-events: auto;
+}
