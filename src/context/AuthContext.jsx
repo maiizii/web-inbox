@@ -12,19 +12,13 @@ export function AuthProvider({ children }) {
       const data = await apiMe();
       setUser(data.user || data || null);
     } catch (e) {
-      if (e.status === 401) {
-        setUser(null);
-      } else {
-        console.warn("[Auth] refresh failed:", e);
-      }
+      if (e.status === 401) setUser(null);
     } finally {
       setLoaded(true);
     }
   }, []);
 
-  useEffect(() => {
-    refreshUser();
-  }, [refreshUser]);
+  useEffect(() => { refreshUser(); }, [refreshUser]);
 
   async function login(email, password) {
     await apiLogin(email, password);
