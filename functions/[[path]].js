@@ -1,10 +1,5 @@
 // Cloudflare Pages Functions - Catch all routes
 // Handles /api/*, other paths go to static assets / SPA.
-// Improvements:
-//  - PBKDF2 iterations reduced to <=100000 (configurable via env.PBKDF2_ITER)
-//  - Proper HttpError status propagation
-//  - Slightly clearer error responses
-//  - Allow empty string content for blocks (only missing field rejects)
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 const SESSION_COOKIE = "sid";
@@ -12,12 +7,7 @@ const SESSION_COOKIE = "sid";
 export async function onRequest(context) {
   const { request, env, next } = context;
   const url = new URL(request.url);
-
-  if (!url.pathname.startsWith("/api/")) {
-    // Not an API path: pass through to static assets / SPA
-    return next();
-  }
-
+  if (!url.pathname.startsWith("/api/")) return next();
   try {
     return await handleApi(request, env);
   } catch (e) {
@@ -35,12 +25,10 @@ async function handleApi(request, env) {
   const { pathname } = url;
   const method = request.method.toUpperCase();
 
-  // Public endpoint
   if (pathname === "/api/health" && method === "GET") {
     return json({ ok: true, ts: Date.now() });
   }
 
-  // Session & User (for protected endpoints)
   const session = await getSessionFromRequest(request, env);
   const user = session ? await getUserById(env, session.userId) : null;
 
@@ -88,7 +76,6 @@ async function handleApi(request, env) {
 }
 
 /* ================== Auth ================== */
-
 async function register(request, env) {
   const { email, password, name } = await parseJson(request);
   if (!email || !password) throw new HttpError(400, "缺少 email 或 password");
@@ -132,8 +119,8 @@ async function login(request, env) {
   return json({ user: publicUser(row) }, 200, setSessionCookie(token, ttlSec));
 }
 
-async function logout(_request, env) {
-  const session = await getSessionFromRequest(_request, env);
+async function logout(request, env) {
+  const session = await getSessionFromRequest(request, env);
   if (session) {
     await env.KV.delete(`session:${session.token}`);
   }
@@ -150,7 +137,6 @@ async function listBlocks(env, userId) {
 }
 
 async function createBlock(request, env, userId) {
-  // 允许空字符串；仅在字段缺失时报错
   const body = await parseJson(request);
   if (!body || !Object.prototype.hasOwnProperty.call(body, "content")) {
     throw new HttpError(400, "缺少 content");
@@ -170,7 +156,6 @@ async function createBlock(request, env, userId) {
 }
 
 async function updateBlock(request, env, userId, blockId) {
-  // 允许更新为空字符串；只要字段存在即可
   const body = await parseJson(request);
   if (!body || !Object.prototype.hasOwnProperty.call(body, "content")) {
     throw new HttpError(400, "缺少 content");
@@ -180,7 +165,7 @@ async function updateBlock(request, env, userId, blockId) {
   if (typeof content !== "string") content = String(content);
 
   const owned = await env.DB.prepare(
-    "SELECT id FROM blocks WHERE id = ? AND user_id = ?"
+    "SELECT id, created_at FROM blocks WHERE id = ? AND user_id = ?"
   ).bind(blockId, userId).first();
   if (!owned) throw new HttpError(404, "不存在或无权限");
 
@@ -189,7 +174,7 @@ async function updateBlock(request, env, userId, blockId) {
     "UPDATE blocks SET content = ?, updated_at = ? WHERE id = ?"
   ).bind(content, now, blockId).run();
 
-  return json({ block: { id: blockId, content, updated_at: now } });
+  return json({ block: { id: blockId, content, created_at: owned.created_at, updated_at: now } });
 }
 
 async function deleteBlock(env, userId, blockId) {
@@ -200,7 +185,6 @@ async function deleteBlock(env, userId, blockId) {
 }
 
 /* ================== Images ================== */
-
 async function uploadImage(request, env, userId) {
   const ct = request.headers.get("Content-Type") || "";
   if (!ct.startsWith("multipart/form-data"))
@@ -246,7 +230,6 @@ async function getImage(env, userId, id) {
 }
 
 /* ================== Session & User Helpers ================== */
-
 async function getSessionFromRequest(request, env) {
   const cookie = parseCookie(request.headers.get("Cookie") || "");
   const token = cookie[SESSION_COOKIE];
@@ -278,7 +261,6 @@ function requireAuth(user) {
 }
 
 /* ================== Crypto (password) ================== */
-
 function getIterations(env) {
   const raw = parseInt(env.PBKDF2_ITER || "100000", 10);
   return Math.min(raw > 0 ? raw : 100000, 100000);
@@ -331,7 +313,6 @@ function timingSafeEqual(a, b) {
 }
 
 /* ================== Utils ================== */
-
 function json(obj, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -388,4 +369,11 @@ function b64ToBytes(b64str) {
   const arr = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   return arr;
+}
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
 }
