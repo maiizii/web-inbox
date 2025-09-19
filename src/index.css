@@ -1,15 +1,15 @@
 /* ==========================================================================
-   Web Tips 统一现代风格全局样式
-   - 可直接覆盖旧版本
-   - 不使用 composes / @apply，确保在纯 PostCSS / Vite 下也能稳定
-   - Tailwind 仍可正常使用（类名不与其冲突）
+   Web Tips 统一现代风格全局样式 (完整版本)
+   使用说明：
+   1. 直接覆盖现有 src/index.css
+   2. 不包含 CSS Modules / @apply / composes 之类仅在特定构建链才解析的语法
+   3. 适配当前“纯文本+图片解析”预览、可拖动分隔条、Undo/Redo 编辑器
+   4. 如果 Tailwind 使用 @tailwind 指令，请把最前面的 @import "tailwindcss"; 替换为:
+        @tailwind base;
+        @tailwind components;
+        @tailwind utilities;
    ========================================================================== */
 
-/* 若你采用 Tailwind 指令形式，可改为：
-   @tailwind base;
-   @tailwind components;
-   @tailwind utilities;
-*/
 @import "tailwindcss";
 
 /* ==========================================================================
@@ -113,9 +113,7 @@ body {
   background: rgba(var(--focus-ring-rgb) / 0.25);
   color: var(--color-text);
 }
-.dark ::selection {
-  background: rgba(var(--focus-ring-rgb) / 0.45);
-}
+.dark ::selection { background: rgba(var(--focus-ring-rgb) / 0.45); }
 
 a {
   color: var(--color-primary);
@@ -158,13 +156,16 @@ a:hover { color: var(--color-primary-hover); }
    动画 / 阴影
    ========================================================================== */
 .fade-in { animation: fade-in .4s var(--ease-base); }
-@keyframes fade-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fade-in {
+  from { opacity:0; transform:translateY(4px); }
+  to { opacity:1; transform:translateY(0); }
+}
 .shadow-sm { box-shadow: var(--shadow-sm); }
 .shadow-md { box-shadow: var(--shadow-md); }
 .shadow-lg { box-shadow: var(--shadow-lg); }
 
 /* ==========================================================================
-   输入组件（现代 + 兼容原 .input）
+   输入组件
    ========================================================================== */
 .input,
 .input-modern {
@@ -190,9 +191,7 @@ a:hover { color: var(--color-primary-hover); }
   box-shadow: 0 0 0 2px rgba(var(--focus-ring-rgb)/0.45);
 }
 .dark .input:focus,
-.dark .input-modern:focus {
-  box-shadow: 0 0 0 2px rgba(var(--focus-ring-rgb)/0.55);
-}
+.dark .input-modern:focus { box-shadow: 0 0 0 2px rgba(var(--focus-ring-rgb)/0.55); }
 .input:disabled,
 .input-modern:disabled {
   opacity:.55;
@@ -231,7 +230,7 @@ a:hover { color: var(--color-primary-hover); }
 .dark .input-error { background: rgba(220,38,38,0.15); }
 
 /* ==========================================================================
-   按钮体系（统一现代风格 + 兼容旧类）
+   按钮体系
    ========================================================================== */
 .btn-base {
   display: inline-flex;
@@ -256,25 +255,18 @@ a:hover { color: var(--color-primary-hover); }
   -webkit-tap-highlight-color: transparent;
   text-decoration: none;
 }
-
 .btn-base:focus-visible {
   outline: 2px solid rgba(var(--focus-ring-rgb)/0.85);
   outline-offset: 2px;
   box-shadow: 0 0 0 3px rgba(var(--focus-ring-rgb)/0.35);
 }
-.dark .btn-base:focus-visible {
-  box-shadow: 0 0 0 3px rgba(var(--focus-ring-rgb)/0.55);
-}
+.dark .btn-base:focus-visible { box-shadow: 0 0 0 3px rgba(var(--focus-ring-rgb)/0.55); }
 .btn-base:active { transform: translateY(1px); }
-.btn-base:disabled {
-  opacity: .55;
-  cursor: not-allowed;
-}
+.btn-base:disabled { opacity: .55; cursor: not-allowed; }
 
 .btn-primary-modern,
 .btn-primary,
 .btn {
-  composes: none; /* 占位防误解，不影响渲染 */
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -311,14 +303,9 @@ a:hover { color: var(--color-primary-hover); }
   box-shadow:0 1px 2px rgba(0,0,0,0.06);
 }
 .btn-outline-modern:hover,
-.btn-outline:hover {
-  background:var(--color-bg-alt);
-  color:var(--color-text);
-}
+.btn-outline:hover { background:var(--color-bg-alt); color:var(--color-text); }
 .btn-outline-modern:active,
-.btn-outline:active {
-  background:var(--color-surface-alt);
-}
+.btn-outline:active { background:var(--color-surface-alt); }
 
 .btn-danger-modern,
 .btn-danger {
@@ -355,14 +342,9 @@ a:hover { color: var(--color-primary-hover); }
   color:var(--color-text-fade);
 }
 .btn-ghost-modern:hover,
-.btn-ghost:hover {
-  background:var(--color-bg-alt);
-  color:var(--color-text);
-}
+.btn-ghost:hover { background:var(--color-bg-alt); color:var(--color-text); }
 .btn-ghost-modern:active,
-.btn-ghost:active {
-  background:var(--color-surface-alt);
-}
+.btn-ghost:active { background:var(--color-surface-alt); }
 
 .btn-icon {
   width:38px;
@@ -374,13 +356,8 @@ a:hover { color: var(--color-primary-hover); }
   color:var(--color-text-soft);
   box-shadow:0 1px 2px rgba(0,0,0,0.05);
 }
-.btn-icon:hover {
-  background:var(--color-bg-alt);
-  color:var(--color-text);
-}
-.btn-icon:active {
-  background:var(--color-surface-alt);
-}
+.btn-icon:hover { background:var(--color-bg-alt); color:var(--color-text); }
+.btn-icon:active { background:var(--color-surface-alt); }
 
 .btn-sm {
   font-size:12.5px;
@@ -442,7 +419,7 @@ a:hover { color: var(--color-primary-hover); }
 .toast-warning { border-color: var(--color-warning); }
 
 /* ==========================================================================
-   Markdown (Prose)
+   Markdown Prose (仍保留，供其它页面可能使用)
    ========================================================================== */
 .prose {
   --tw-prose-body: var(--color-text-soft);
@@ -455,7 +432,6 @@ a:hover { color: var(--color-primary-hover); }
   --tw-prose-td-borders: var(--color-border);
   max-width: 100%;
 }
-
 .prose code {
   background: rgba(99,102,241,0.1);
   padding: 2px 5px;
@@ -464,7 +440,6 @@ a:hover { color: var(--color-primary-hover); }
   font-family: var(--mono);
 }
 .dark .prose code { background: rgba(99,102,241,0.22); }
-
 .prose pre {
   background: var(--code-bg);
   color: #f1f5f9;
@@ -483,7 +458,6 @@ a:hover { color: var(--color-primary-hover); }
   border-radius: 0;
   font-size: inherit;
 }
-
 .prose img {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -492,7 +466,6 @@ a:hover { color: var(--color-primary-hover); }
   margin: 0.75rem 0;
   box-shadow: var(--shadow-sm);
 }
-
 .prose a {
   position: relative;
   text-decoration: none;
@@ -512,14 +485,8 @@ a:hover { color: var(--color-primary-hover); }
   transform-origin:left;
   transform: scaleX(.4);
 }
-.prose a:hover::after {
-  opacity:.85;
-  transform: scaleX(1);
-}
-
+.prose a:hover::after { opacity:.85; transform: scaleX(1); }
 .prose h1, .prose h2, .prose h3 { scroll-margin-top: 72px; }
-
-/* 多空行占位 */
 .prose md-blank {
   display: block;
   height: 0.9rem;
@@ -531,7 +498,7 @@ a:hover { color: var(--color-primary-hover); }
 }
 
 /* ==========================================================================
-   编辑器（行号 + 文本域容器）
+   编辑器（旧版保留：如果有旧组件依赖）
    ========================================================================== */
 .editor-wrapper {
   display: flex;
@@ -549,25 +516,34 @@ a:hover { color: var(--color-primary-hover); }
 }
 .editor-line-numbers {
   position: relative;
-  padding: 0 8px 0 10px;
+  padding: 8px 8px 8px 10px;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
   color: #94a3b8;
   text-align: right;
   user-select: none;
   min-width: 3.1rem;
   border-right: 1px solid var(--color-border);
-  background: linear-gradient(180deg,var(--color-surface) 0%,var(--color-surface-alt) 120%);
+  background: var(--color-surface);
   box-sizing: border-box;
   overflow: hidden;
   font-variant-numeric: tabular-nums;
+  font-family: var(--mono);
 }
-.dark .editor-line-numbers { color: #64748b; }
+.dark .editor-line-numbers {
+  background: var(--color-surface-alt);
+  color: #64748b;
+}
 .editor-line-numbers-inner {
   position: absolute;
-  top: 0; left: 0; right: 0;
+  top: 8px;
+  left: 0;
+  right: 0;
   white-space: pre;
-  padding-right: 4px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  font-size: 13px;
+  font-family: var(--mono);
   transform: translateY(0);
   will-change: transform;
 }
@@ -577,10 +553,10 @@ a:hover { color: var(--color-primary-hover); }
   border: none;
   outline: none;
   resize: none;
-  padding: 10px 16px;
-  font-size: 13.5px;
+  padding: 8px 16px;
+  font-size: 13px;
   line-height: 1.5;
-  background: linear-gradient(180deg,var(--color-surface) 0%,var(--color-surface-alt) 120%);
+  background: var(--color-surface);
   color: var(--color-text);
   font-family: var(--mono);
   overflow: auto;
@@ -588,10 +564,9 @@ a:hover { color: var(--color-primary-hover); }
   white-space: pre;
   caret-color: var(--color-primary);
   transition: background var(--transition-base);
+  box-sizing: border-box;
 }
-.dark .editor-textarea {
-  background: linear-gradient(180deg,#162132 0%,#1f2d3d 140%);
-}
+.dark .editor-textarea { background: var(--color-surface-alt); }
 .editor-textarea:focus { outline: none; }
 .editor-textarea::-webkit-scrollbar { width: 12px; }
 .editor-textarea::-webkit-scrollbar-thumb {
@@ -602,6 +577,54 @@ a:hover { color: var(--color-primary-hover); }
 .dark .editor-textarea::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg,#506172,#3e4d5c);
   border: 3px solid #162132;
+}
+
+/* ==========================================================================
+   分割条 + 纯文本预览 (当前新版编辑器使用)
+   ========================================================================== */
+.split-divider {
+  position: relative;
+  flex: 0 0 auto;
+  background: linear-gradient(180deg,#e2e8f0,#cbd5e1);
+  transition: background 120ms ease;
+  z-index: 30;
+}
+.dark .split-divider {
+  background: linear-gradient(180deg,#334155,#1e293b);
+}
+.split-vertical { width: 6px; cursor: col-resize; }
+.split-horizontal { height: 6px; cursor: row-resize; }
+.split-divider::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:transparent;
+  transition: background 120ms ease;
+}
+.split-divider:hover::after,
+.split-divider.dragging::after {
+  background: rgba(99,102,241,0.18);
+}
+.dark .split-divider:hover::after,
+.dark .split-divider.dragging::after {
+  background: rgba(99,102,241,0.30);
+}
+
+.preview-plain {
+  background: var(--color-surface);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  border-left: 1px solid var(--color-border);
+}
+.dark .preview-plain {
+  background: var(--color-surface-alt);
+  border-color: var(--color-border);
+}
+
+body.editor-resizing,
+body.editor-resizing * {
+  user-select: none !important;
 }
 
 /* ==========================================================================
@@ -627,10 +650,7 @@ a:hover { color: var(--color-primary-hover); }
   opacity:.8;
 }
 
-.block-item-active {
-  position: relative;
-  isolation: isolate;
-}
+.block-item-active { position: relative; isolation: isolate; }
 .block-item-active::before {
   content:"";
   position:absolute;
@@ -681,118 +701,3 @@ a:hover { color: var(--color-primary-hover); }
 /* ==========================================================================
    END
    ========================================================================== */
-/* 省略：保持你上一版统一现代风格的全部内容（请替换为当前最新版） */
-/* === 下面只展示需要新增/确认存在的 Split divider 样式，可合并到你的 index.css === */
-
-/* === 分割条（如未添加或需覆盖） === */
-.split-divider {
-  position: relative;
-  flex: 0 0 auto;
-  background: linear-gradient(180deg,#e2e8f0,#cbd5e1);
-  transition: background 120ms ease;
-  z-index: 30;
-}
-.dark .split-divider {
-  background: linear-gradient(180deg,#334155,#1e293b);
-}
-.split-vertical { width: 6px; cursor: col-resize; }
-.split-horizontal { height: 6px; cursor: row-resize; }
-.split-divider::after {
-  content:"";
-  position:absolute;
-  inset:0;
-  background:transparent;
-  transition: background 120ms ease;
-}
-.split-divider:hover::after,
-.split-divider.dragging::after {
-  background: rgba(99,102,241,0.18);
-}
-.dark .split-divider:hover::after,
-.dark .split-divider.dragging::after {
-  background: rgba(99,102,241,0.30);
-}
-
-/* === 预览纯文本区域基础（可调色） === */
-.preview-plain {
-  background: var(--color-surface);
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.5;
-  border-left: 1px solid var(--color-border);
-}
-.dark .preview-plain {
-  background: var(--color-surface-alt);
-  border-color: var(--color-border);
-}
-
-/* === 行号 & 编辑器（保证对齐） === */
-.editor-line-numbers {
-  position: relative;
-  padding: 8px 8px 8px 10px;
-  font-size: 13px;
-  line-height: 1.5;
-  font-family: var(--mono);
-  color: #94a3b8;
-  text-align: right;
-  user-select: none;
-  min-width: 3.1rem;
-  border-right: 1px solid var(--color-border);
-  background: var(--color-surface);
-  box-sizing: border-box;
-  overflow: hidden;
-}
-.dark .editor-line-numbers {
-  background: var(--color-surface-alt);
-  color: #64748b;
-}
-.editor-line-numbers-inner {
-  position: absolute;
-  top: 8px; /* 与 padding-top 一致，JS 会再同步一次 */
-  left: 0;
-  right: 0;
-  white-space: pre;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.5;
-  font-size: 13px;
-  font-family: var(--mono);
-  transform: translateY(0);
-  will-change: transform;
-}
-
-.editor-textarea {
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.5;
-  padding: 8px 16px;
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: none;
-  outline: none;
-  resize: none;
-  min-height: 100%;
-  width: 100%;
-  box-sizing: border-box;
-  tab-size: 2;
-  white-space: pre;
-  overflow-wrap: normal;
-  word-break: normal;
-  caret-color: var(--color-primary);
-}
-.dark .editor-textarea {
-  background: var(--color-surface-alt);
-}
-.editor-textarea:focus { outline: none; }
-
-/* 拖动时禁止文本选择 */
-body.editor-resizing, 
-body.editor-resizing * {
-  cursor: col-resize !important;
-  user-select: none !important;
-}
-body.editor-resizing.split-horizontal-mode,
-body.editor-resizing.split-horizontal-mode * {
-  cursor: row-resize !important;
-}
-
-/* 如果想区分上下模式，可以在 JS 中额外为 body 添加 split-horizontal-mode class */
