@@ -7,20 +7,11 @@ import React, {
 import { useDebouncedCallback } from "../../hooks/useDebouncedCallback.js";
 import { apiUploadImage } from "../../api/cloudflare.js";
 import { useToast } from "../../hooks/useToast.jsx";
-
-/**
- * BlockEditorAuto (纯文本预览 + 分割条拖动 + Undo/Redo + Tab/Shift+Tab)
- * Props:
- *  - block: { id, content, created_at, updated_at, position, optimistic? }
- *  - onChange(id, patch)
- *  - onDelete(id)
- *  - onImmediateSave(id, {content})
- *  - safeUpdateFallback?(id,payload,error)
- */
+import { Undo2, Redo2 } from "lucide-react";
 
 const MAX_HISTORY = 200;
-const HISTORY_GROUP_MS = 800; // 组装输入的时间窗口
-const INDENT = "  "; // 两个空格
+const HISTORY_GROUP_MS = 800;
+const INDENT = "  "; // 两空格
 
 export default function BlockEditorAuto({
   block,
@@ -31,7 +22,7 @@ export default function BlockEditorAuto({
 }) {
   const toast = useToast();
 
-  // ---------------- State ----------------
+  /* ---------------- State ---------------- */
   const [content, setContent] = useState(block?.content || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -39,26 +30,18 @@ export default function BlockEditorAuto({
   const [previewMode, setPreviewMode] = useState(
     () => localStorage.getItem("previewMode") || "vertical"
   ); // vertical=左右, horizontal=上下
-
   const [splitRatio, setSplitRatio] = useState(() => {
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : 0.5;
     return isNaN(v) ? 0.5 : clamp(v, 0.15, 0.85);
   });
-
-  const [lineNumbers, setLineNumbers] = useState("1");
-  const [plainPreview, setPlainPreview] = useState("");
-
   const [draggingSplit, setDraggingSplit] = useState(false);
+  const [lineNumbers, setLineNumbers] = useState("1");
+  const [previewHtml, setPreviewHtml] = useState("");
 
-  // Undo/Redo
-  const historyRef = useRef([]);
-  const historyIndexRef = useRef(-1);
-  const lastHistoryPushTimeRef = useRef(0);
-  const isRestoringHistoryRef = useRef(false);
-
-  // ---------------- Refs ----------------
+  /* ---------------- Refs ---------------- */
+  const rootRef = useRef(null);
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -69,15 +52,22 @@ export default function BlockEditorAuto({
   const currentBlockIdRef = useRef(block?.id || null);
   const dragMetaRef = useRef(null);
 
-  // Derived
+  // 历史
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(-1);
+  const lastHistoryPushTimeRef = useRef(0);
+  const isRestoringHistoryRef = useRef(false);
+
+  /* ---------------- Derived ---------------- */
   const dirty = !!block && content !== lastPersisted.current.content;
   const derivedTitle = (block?.content || "").split("\n")[0].slice(0, 64) || "(空)";
+  const canUndo = historyIndexRef.current > 0;
+  const canRedo = historyIndexRef.current < historyRef.current.length - 1;
 
-  // ---------------- Helpers ----------------
+  /* ---------------- Utils ---------------- */
   function clamp(v, a, b) {
     return Math.min(b, Math.max(a, v));
   }
-
   function escapeHtml(str) {
     return str
       .replace(/&/g, "&amp;")
@@ -86,39 +76,52 @@ export default function BlockEditorAuto({
       .replace(/"/g, "&quot;");
   }
 
-  function updatePlainPreview(txt) {
-    // 纯文本预览：只做转义 + 换行 -> <br/>
-    setPlainPreview(
-      escapeHtml(txt || "")
-        .replace(/\r\n/g, "\n")
-        .replace(/\n/g, "<br/>")
-    );
+  // 仅解析图片，不解析其它 markdown
+  function renderPlainWithImages(text) {
+    if (!text) return "<span class='text-slate-400'>暂无内容</span>";
+    const escaped = escapeHtml(text);
+    // 匹配 ![alt](url)
+    const imgRe = /!\[([^\]]*?)\]\((https?:\/\/[^\s)]+)\)/g;
+    const replaced = escaped.replace(imgRe, (_, alt, url) => {
+      const safeAlt = alt.replace(/"/g, "&quot;");
+      const safeUrl = url.replace(/"/g, "%22");
+      return `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" class="inline-block max-w-full border border-slate-200 dark:border-slate-600 rounded-md my-1" />`;
+    });
+    return replaced
+      .replace(/\r\n/g, "\n")
+      .replace(/\n/g, "<br/>");
   }
 
-  function updateLineNumbers(txt) {
-    if (!txt) { setLineNumbers("1"); return; }
-    setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
+  function updatePreview(text) {
+    setPreviewHtml(renderPlainWithImages(text));
   }
 
-  // ---------------- History (Undo/Redo) ----------------
+  function updateLineNums(text) {
+    if (!text) { setLineNumbers("1"); return; }
+    setLineNumbers(text.split("\n").map((_, i) => i + 1).join("\n"));
+  }
+
+  /* ---------------- History ---------------- */
   function pushHistory(newContent, forceSeparate = false) {
     if (isRestoringHistoryRef.current) return;
     const now = Date.now();
     const since = now - lastHistoryPushTimeRef.current;
-    const lastContent =
+    const lastSnap =
       historyIndexRef.current >= 0
         ? historyRef.current[historyIndexRef.current]
         : undefined;
-    if (!forceSeparate && since < HISTORY_GROUP_MS && lastContent === newContent) {
-      // 不需要重复
-      return;
-    }
-    if (!forceSeparate && since < HISTORY_GROUP_MS && lastContent !== undefined) {
-      // 在时间窗口内且内容变了，直接替换当前快照
-      historyRef.current[historyIndexRef.current] = newContent;
+
+    if (!forceSeparate && since < HISTORY_GROUP_MS) {
+      // 同组
+      if (lastSnap !== newContent) {
+        // 替换当前
+        if (historyIndexRef.current >= 0)
+          historyRef.current[historyIndexRef.current] = newContent;
+      }
       lastHistoryPushTimeRef.current = now;
       return;
     }
+
     // 剪掉 redo 分支
     if (historyIndexRef.current < historyRef.current.length - 1) {
       historyRef.current.splice(historyIndexRef.current + 1);
@@ -133,17 +136,17 @@ export default function BlockEditorAuto({
   }
 
   function restoreHistory(delta) {
-    if (historyRef.current.length === 0) return;
-    const newIndex = historyIndexRef.current + delta;
-    if (newIndex < 0 || newIndex >= historyRef.current.length) return;
-    historyIndexRef.current = newIndex;
-    const snap = historyRef.current[newIndex];
+    if (!historyRef.current.length) return;
+    const nextIndex = historyIndexRef.current + delta;
+    if (nextIndex < 0 || nextIndex >= historyRef.current.length) return;
+    historyIndexRef.current = nextIndex;
+    const snap = historyRef.current[nextIndex];
     isRestoringHistoryRef.current = true;
     setContent(snap);
+    updateLineNums(snap);
+    updatePreview(snap);
     requestAnimationFrame(() => {
       isRestoringHistoryRef.current = false;
-      updateLineNumbers(snap);
-      updatePlainPreview(snap);
     });
   }
 
@@ -154,8 +157,7 @@ export default function BlockEditorAuto({
     if (e.key === "z" || e.key === "Z") {
       e.preventDefault();
       if (e.shiftKey) {
-        // Ctrl+Shift+Z / Cmd+Shift+Z redo
-        restoreHistory(+1);
+        restoreHistory(+1); // Cmd+Shift+Z redo
       } else {
         restoreHistory(-1);
       }
@@ -165,36 +167,37 @@ export default function BlockEditorAuto({
     }
   }
 
-  // ---------------- Effects: block 切换 ----------------
+  /* ---------------- Effects: block change ---------------- */
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
-    setContent(block?.content || "");
-    lastPersisted.current = { content: block?.content || "" };
-    setError("");
-    updateLineNumbers(block?.content || "");
-    updatePlainPreview(block?.content || "");
-    historyRef.current = [block?.content || ""];
+    const init = block?.content || "";
+    setContent(init);
+    lastPersisted.current = { content: init };
+    historyRef.current = [init];
     historyIndexRef.current = 0;
-    lastHistoryPushTimeRef.current = Date.now();
+    updateLineNums(init);
+    updatePreview(init);
     userManuallyBlurredRef.current = false;
     shouldRestoreFocusRef.current = false;
     requestAnimationFrame(syncLineNumbersPadding);
   }, [block?.id]);
 
-  // ---------------- Effects: preview / mode / ratio ----------------
+  /* ---------------- Effects: showPreview / mode / ratio ---------------- */
   useEffect(() => {
-    updatePlainPreview(content);
+    updatePreview(content);
   }, [content]);
 
   useEffect(() => {
-    const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
+    const key = previewMode === "vertical"
+      ? "editorSplit_vertical"
+      : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : splitRatio;
     setSplitRatio(isNaN(v) ? 0.5 : clamp(v, 0.15, 0.85));
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
-  // ---------------- Selection / focus ----------------
+  /* ---------------- Selection / focus ---------------- */
   function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -215,17 +218,16 @@ export default function BlockEditorAuto({
       restoreSel();
     }
   }
-
   useEffect(() => {
     if (!block) return;
     requestAnimationFrame(maybeRestoreFocus);
   }, [block?.id]);
 
-  // ---------------- Save ----------------
+  /* ---------------- Auto Save ---------------- */
   async function doSave() {
     if (!block || block.optimistic) return;
     if (!dirty) return;
-    const savedForBlock = block.id;
+    const savedBlock = block.id;
     setSaving(true);
     setError("");
     const payload = { content };
@@ -235,19 +237,21 @@ export default function BlockEditorAuto({
       try {
         real = await onImmediateSave(block.id, payload);
       } catch (err) {
-        if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err);
-        else throw err;
+        if (safeUpdateFallback) {
+          real = await safeUpdateFallback(block.id, payload, err);
+        } else {
+          throw err;
+        }
       }
-      // 若在保存期间用户切换了 block，不更新 lastPersisted（避免覆盖）
-      if (currentBlockIdRef.current === savedForBlock) {
+      if (currentBlockIdRef.current === savedBlock) {
         lastPersisted.current = { content };
       }
     } catch (err) {
-      if (currentBlockIdRef.current === savedForBlock) {
+      if (currentBlockIdRef.current === savedBlock) {
         setError(err.message || "保存失败");
       }
     } finally {
-      if (currentBlockIdRef.current === savedForBlock) {
+      if (currentBlockIdRef.current === savedBlock) {
         setSaving(false);
         requestAnimationFrame(maybeRestoreFocus);
       }
@@ -266,7 +270,7 @@ export default function BlockEditorAuto({
     captureSel();
   }
 
-  // ---------------- Scroll / line numbers ----------------
+  /* ---------------- Scroll & line numbers ---------------- */
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
@@ -275,20 +279,20 @@ export default function BlockEditorAuto({
     inner.style.top = padTop + "px";
   }
   function handleEditorScroll(e) {
-    const st = e.target.scrollTop;
     if (lineNumbersInnerRef.current) {
-      lineNumbersInnerRef.current.style.transform = `translateY(${-st}px)`;
+      lineNumbersInnerRef.current.style.transform =
+        `translateY(${-e.target.scrollTop}px)`;
     }
   }
   useEffect(() => {
     syncLineNumbersPadding();
-    const onResize = () => syncLineNumbersPadding();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const r = () => syncLineNumbersPadding();
+    window.addEventListener("resize", r);
+    return () => window.removeEventListener("resize", r);
   }, []);
 
-  // ---------------- Paste / Drop images ----------------
-  async function immediatePersistAfterImage(newContent) {
+  /* ---------------- Paste / Drop image ---------------- */
+  async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
       onChange && onChange(block.id, { content: newContent });
@@ -306,17 +310,16 @@ export default function BlockEditorAuto({
       toast.push(e.message || "图片保存失败", { type: "error" });
     }
   }
-
   async function uploadOne(file) {
     if (!file || !block) return;
     const currentId = block.id;
     const tempId = "uploading-" + Date.now() + "-" + Math.random().toString(16).slice(2);
     const placeholder = `![${tempId}](uploading)`;
     setContent(prev => {
-      const nl = prev.length > 0 && !prev.endsWith("\n") ? "\n" : "";
-      const updated = prev + nl + placeholder + "\n";
-      pushHistory(updated, true);
-      return updated;
+      const nl = prev && !prev.endsWith("\n") ? "\n" : "";
+      const nc = prev + nl + placeholder + "\n";
+      pushHistory(nc, true);
+      return nc;
     });
     try {
       const img = await apiUploadImage(file);
@@ -327,7 +330,7 @@ export default function BlockEditorAuto({
           "g"
         );
         const replaced = prev.replace(re, `![image](${img.url})`);
-        immediatePersistAfterImage(replaced);
+        persistAfterImage(replaced);
         return replaced;
       });
       toast.push("图片已上传", { type: "success" });
@@ -338,13 +341,12 @@ export default function BlockEditorAuto({
           "g"
         );
         const replaced = prev.replace(re, "![失败](#)");
-        immediatePersistAfterImage(replaced);
+        persistAfterImage(replaced);
         return replaced;
       });
       toast.push(err.message || "图片上传失败", { type: "error" });
     }
   }
-
   const handlePaste = useCallback(async e => {
     if (!block) return;
     const items = Array.from(e.clipboardData.items).filter(it => it.type.startsWith("image/"));
@@ -355,7 +357,6 @@ export default function BlockEditorAuto({
       if (f) await uploadOne(f);
     }
   }, [block]);
-
   const handleDrop = useCallback(async e => {
     if (!block) return;
     e.preventDefault();
@@ -364,90 +365,102 @@ export default function BlockEditorAuto({
     for (const f of files) await uploadOne(f);
   }, [block]);
 
-  // ---------------- Tab / Shift+Tab ----------------
+  /* ---------------- Indent (Tab / Shift+Tab) ---------------- */
   function handleIndentKey(e) {
     if (e.key !== "Tab") return;
     const ta = textareaRef.current;
     if (!ta) return;
     e.preventDefault();
+
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
-    const before = content.slice(0, start);
-    const sel = content.slice(start, end);
-    const after = content.slice(end);
+
+    // 获取当前选区完整行
+    const text = content;
+    const lineStartIdx = text.lastIndexOf("\n", start - 1) + 1;
+    const lineEndIdx = text.indexOf("\n", end);
+    const effectiveEnd = lineEndIdx === -1 ? text.length : lineEndIdx;
+
+    const before = text.slice(0, lineStartIdx);
+    const target = text.slice(lineStartIdx, effectiveEnd);
+    const after = text.slice(effectiveEnd);
+
+    const lines = target.split("\n");
 
     if (e.shiftKey) {
       // 反缩进
-      const selLines = sel.split("\n");
-      let removedFirstLineChars = 0;
-      const newSelLines = selLines.map((line, idx) => {
-        if (line.startsWith(INDENT)) {
-          if (idx === 0) removedFirstLineChars = INDENT.length;
-          return line.slice(INDENT.length);
-        } else if (line.startsWith(" ")) {
-          if (idx === 0) removedFirstLineChars = 1;
-          return line.slice(1);
+      let removeFirst = 0;
+      const newLines = lines.map((l, i) => {
+        if (l.startsWith(INDENT)) {
+          if (i === 0) removeFirst = INDENT.length;
+          return l.slice(INDENT.length);
+        } else if (l.startsWith(" ")) {
+          if (i === 0) removeFirst = 1;
+          return l.slice(1);
         }
-        return line;
+        return l;
       });
-      const newSel = newSelLines.join("\n");
-      const newContent = before + newSel + after;
+      const newTarget = newLines.join("\n");
+      const newContent = before + newTarget + after;
+      const newSelStart = start - removeFirst;
+      const adjust = target.length - newTarget.length;
+      const newSelEnd = end - adjust;
       setContent(newContent);
       pushHistory(newContent);
       requestAnimationFrame(() => {
-        const newStart = start - removedFirstLineChars;
-        const newEnd = newStart + newSel.length;
         ta.focus();
-        ta.setSelectionRange(newStart, newEnd);
+        ta.setSelectionRange(newSelStart, newSelEnd);
         captureSel();
       });
     } else {
-      // 正缩进
-      if (sel.includes("\n")) {
-        const selLines = sel.split("\n");
-        const newSelLines = selLines.map(l => INDENT + l);
-        const newSel = newSelLines.join("\n");
-        const newContent = before + newSel + after;
-        setContent(newContent);
-        pushHistory(newContent);
-        requestAnimationFrame(() => {
-          ta.focus();
-          ta.setSelectionRange(start + INDENT.length, start + newSel.length);
-          captureSel();
-        });
-      } else {
-        const newContent = before + INDENT + sel + after;
+      // 正向缩进
+      if (lines.length === 1) {
+        // 单行缩进
+        const newLine = INDENT + lines[0];
+        const newContent = before + newLine + after;
         setContent(newContent);
         pushHistory(newContent);
         requestAnimationFrame(() => {
           const pos = start + INDENT.length;
-            ta.focus();
+          ta.focus();
           ta.setSelectionRange(pos, pos);
+          captureSel();
+        });
+      } else {
+        // 多行
+        const newLines = lines.map(l => INDENT + l);
+        const newTarget = newLines.join("\n");
+        const newContent = before + newTarget + after;
+        const delta = newLines.length * INDENT.length;
+        setContent(newContent);
+        pushHistory(newContent);
+        requestAnimationFrame(() => {
+          ta.focus();
+          ta.setSelectionRange(start + INDENT.length, end + delta);
           captureSel();
         });
       }
     }
   }
 
-  // ---------------- Key handling ----------------
+  /* ---------------- Keydown ---------------- */
   function handleKeyDown(e) {
-    // Undo/Redo
     handleUndoRedoKey(e);
-    // Tab / Shift+Tab
     handleIndentKey(e);
   }
 
-  // ---------------- Split drag ----------------
+  /* ---------------- Split Drag ---------------- */
   function startDrag(e) {
     if (!showPreview) return;
     e.preventDefault();
-    const container = e.currentTarget.parentElement; // .editor-split-root
+    const container = rootRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
     dragMetaRef.current = { rect };
     setDraggingSplit(true);
-    window.addEventListener("mousemove", onDragMove);
-    window.addEventListener("mouseup", stopDrag);
+    document.body.classList.add("editor-resizing");
+    window.addEventListener("pointermove", onDragMove);
+    window.addEventListener("pointerup", stopDrag);
   }
   function onDragMove(e) {
     if (!draggingSplit || !dragMetaRef.current) return;
@@ -462,8 +475,9 @@ export default function BlockEditorAuto({
   }
   function stopDrag() {
     setDraggingSplit(false);
-    window.removeEventListener("mousemove", onDragMove);
-    window.removeEventListener("mouseup", stopDrag);
+    document.body.classList.remove("editor-resizing");
+    window.removeEventListener("pointermove", onDragMove);
+    window.removeEventListener("pointerup", stopDrag);
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     localStorage.setItem(key, String(splitRatio));
   }
@@ -472,21 +486,22 @@ export default function BlockEditorAuto({
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     localStorage.setItem(key, "0.5");
   }
-
   useEffect(() => {
     return () => {
       if (draggingSplit) stopDrag();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draggingSplit]);
 
-  // ---------------- History push on typing ----------------
-  // 在输入时（onChange）及时 push（分组逻辑内部处理）
-  function handleContentChange(val) {
-    setContent(val);
-    pushHistory(val);
+  /* ---------------- Content Change ---------------- */
+  function handleContentChange(v) {
+    setContent(v);
+    updateLineNums(v);
+    updatePreview(v);
+    pushHistory(v);
   }
 
-  // ---------------- Early return ----------------
+  /* ---------------- Render ---------------- */
   if (!block) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-slate-400">
@@ -496,20 +511,40 @@ export default function BlockEditorAuto({
   }
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // ---------------- Render ----------------
   return (
     <div
+      ref={rootRef}
       className="h-full flex flex-col overflow-hidden"
       onPaste={handlePaste}
       onDrop={handleDrop}
       onDragOver={e => e.preventDefault()}
     >
-      {/* 顶部工具栏（无编辑标题/无 MD 快捷） */}
+      {/* 顶部工具栏 */}
       <div className="flex items-center gap-3 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
         <div className="flex-1 text-lg font-semibold truncate select-none">
           {derivedTitle}
         </div>
+
         <div className="flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => restoreHistory(-1)}
+            disabled={!canUndo}
+            className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40"
+            title="撤销 (Ctrl+Z)"
+          >
+            <Undo2 size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => restoreHistory(+1)}
+            disabled={!canRedo}
+            className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40"
+            title="恢复 (Ctrl+Y)"
+          >
+            <Redo2 size={16} />
+          </button>
+
           <button
             type="button"
             onClick={() => setShowPreview(p => !p)}
@@ -517,7 +552,7 @@ export default function BlockEditorAuto({
           >
             {showPreview ? "隐藏预览" : "显示预览"}
           </button>
-            <button
+          <button
             type="button"
             onClick={() =>
               setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))
@@ -527,19 +562,17 @@ export default function BlockEditorAuto({
           >
             {previewMode === "vertical" ? "上下预览" : "左右预览"}
           </button>
+
           <div className="text-slate-400 select-none min-w-[64px] text-right">
             {saving
               ? "保存中"
               : error
-              ? (
-                <button onClick={doSave} className="text-red-500 hover:underline">
-                  重试
-                </button>
-                )
-              : dirty
-              ? "待保存"
-              : "已保存"}
+                ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button>
+                : dirty
+                  ? "待保存"
+                  : "已保存"}
           </div>
+
           <button
             onClick={() => {
               if (confirm("确定删除该 Block？")) {
@@ -557,9 +590,7 @@ export default function BlockEditorAuto({
       <div
         className={`editor-split-root flex-1 min-h-0 flex ${
           showPreview
-            ? previewMode === "vertical"
-              ? "flex-row"
-              : "flex-col"
+            ? previewMode === "vertical" ? "flex-row" : "flex-col"
             : "flex-col"
         } overflow-hidden`}
       >
@@ -582,6 +613,7 @@ export default function BlockEditorAuto({
         >
           <div className="flex-1 relative overflow-hidden">
             <div className="absolute inset-0 flex overflow-hidden">
+              {/* 行号列 */}
               <div className="editor-line-numbers">
                 <pre
                   ref={lineNumbersInnerRef}
@@ -591,6 +623,7 @@ export default function BlockEditorAuto({
                   {lineNumbers}
                 </pre>
               </div>
+              {/* 滚动容器 */}
               <div
                 ref={scrollContainerRef}
                 className="flex-1 h-full overflow-auto custom-scroll"
@@ -601,7 +634,7 @@ export default function BlockEditorAuto({
                   className="editor-textarea"
                   value={content}
                   disabled={disabledByCreation}
-                  placeholder="输入文本 (支持粘贴/拖拽图片, Tab 缩进, Shift+Tab 反缩进, Ctrl+Z / Ctrl+Y 撤销恢复)"
+                  placeholder="输入文本 (支持粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
                   wrap="off"
                   onChange={e => {
                     handleContentChange(e.target.value);
@@ -626,13 +659,13 @@ export default function BlockEditorAuto({
             className={`split-divider ${
               previewMode === "vertical" ? "split-vertical" : "split-horizontal"
             } ${draggingSplit ? "dragging" : ""}`}
-            onMouseDown={startDrag}
+            onPointerDown={startDrag}
             onDoubleClick={resetSplit}
             title="拖动调整比例，双击恢复 50%"
           />
         )}
 
-        {/* 预览区（纯文本） */}
+        {/* 预览区（纯文本 + 图片识别） */}
         {showPreview && (
           <div
             className={
@@ -648,7 +681,7 @@ export default function BlockEditorAuto({
           >
             <div
               className="font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-              dangerouslySetInnerHTML={{ __html: plainPreview || "<span class='text-slate-400'>暂无内容</span>" }}
+              dangerouslySetInnerHTML={{ __html: previewHtml }}
             />
           </div>
         )}
