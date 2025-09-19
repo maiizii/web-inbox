@@ -1,13 +1,14 @@
 import React, { useState } from "react";
-import { useAuth } from "../context/AuthContext.jsx";
-import { useNavigate } from "react-router-dom";
 import { apiLogin, apiRegister } from "../api/cloudflare.js";
 import { useToast } from "../hooks/useToast.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
+import { useNavigate } from "react-router-dom";
 
 export default function AuthPage() {
-  const [mode, setMode] = useState("login"); // login | register
+  const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const { refreshUser } = useAuth();
@@ -21,9 +22,8 @@ export default function AuthPage() {
     setLoading(true);
     try {
       if (mode === "register") {
-        await apiRegister(email, password, name);
+        await apiRegister(email, password, name, inviteCode);
         toast.push("注册成功", { type: "success" });
-        // 注册后自动登录
         await apiLogin(email, password);
       } else {
         await apiLogin(email, password);
@@ -42,18 +42,20 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="text-2xl font-semibold">Web Inbox</h1>
-          <p className="text-sm text-slate-500">
-            {mode === "login" ? "登录你的账户" : "创建一个新账户"}
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-500 text-transparent bg-clip-text">
+            Web Tips
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {mode === "login" ? "登录到你的知识小片段" : "创建你的账号（需要邀请码）"}
           </p>
         </div>
 
         <div className="flex bg-slate-100 dark:bg-slate-800 rounded-md p-1">
           <button
             onClick={() => setMode("login")}
-            className={`flex-1 py-2 rounded-md text-sm font-medium ${
+            className={`flex-1 py-2 rounded-md text-sm font-medium transition ${
               mode === "login"
-                ? "bg-white dark:bg-slate-700 shadow"
+                ? "bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white"
                 : "text-slate-500"
             }`}
           >
@@ -61,9 +63,9 @@ export default function AuthPage() {
           </button>
           <button
             onClick={() => setMode("register")}
-            className={`flex-1 py-2 rounded-md text-sm font-medium ${
+            className={`flex-1 py-2 rounded-md text-sm font-medium transition ${
               mode === "register"
-                ? "bg-white dark:bg-slate-700 shadow"
+                ? "bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white"
                 : "text-slate-500"
             }`}
           >
@@ -73,14 +75,14 @@ export default function AuthPage() {
 
         <form
           onSubmit={submit}
-          className="space-y-4 bg-white dark:bg-slate-800 p-6 rounded-lg shadow border border-slate-200/70 dark:border-slate-700/60"
+          className="space-y-5 bg-white dark:bg-slate-800/90 p-8 rounded-xl shadow-lg border border-slate-200/70 dark:border-slate-700/60 backdrop-blur"
         >
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Email
+              邮箱
             </label>
             <input
-              className="input"
+              className="input-modern"
               type="email"
               autoComplete="email"
               required
@@ -88,16 +90,15 @@ export default function AuthPage() {
               onChange={e => setEmail(e.target.value.trim())}
             />
           </div>
-            <div className="space-y-1">
+
+          <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Password
+              密码
             </label>
             <input
-              className="input"
+              className="input-modern"
               type="password"
-              autoComplete={
-                mode === "login" ? "current-password" : "new-password"
-              }
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
               required
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -105,16 +106,30 @@ export default function AuthPage() {
           </div>
 
           {mode === "register" && (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                昵称（可选）
-              </label>
-              <input
-                className="input"
-                value={name}
-                onChange={e => setName(e.target.value)}
-              />
-            </div>
+            <>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  昵称（可选）
+                </label>
+                <input
+                  className="input-modern"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  邀请码
+                </label>
+                <input
+                  className="input-modern"
+                  required
+                  value={inviteCode}
+                  onChange={e => setInviteCode(e.target.value.trim())}
+                  placeholder="请输入邀请码"
+                />
+              </div>
+            </>
           )}
 
           {error && (
@@ -125,7 +140,7 @@ export default function AuthPage() {
 
           <button
             disabled={loading}
-            className="btn btn-primary w-full"
+            className="btn-primary-modern w-full"
             type="submit"
           >
             {loading
