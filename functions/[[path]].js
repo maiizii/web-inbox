@@ -1,96 +1,102 @@
-// Cloudflare Pages Functions - Catch all routes
-// API: /api/* 其他路径交给静态资源
-// 功能点：
-//  - 统一错误返回 JSON
-//  - PBKDF2(<=100000) 可通过 env.PBKDF2_ITER 配置
-//  - 注册强制邀请码 (env.INVITE_CODE || "WebtipS")
-//  - Blocks 允许空字符串内容
-//  - updateBlock 返回 created_at, 防止前端排序错乱
+// Web Tips Cloudflare Pages Functions
+// API entry: /api/*
+// Features:
+//  - Auth (session cookie)
+//  - Invite code (env.INVITE_CODE) - mandatory
+//  - Blocks CRUD + image upload
+//  - Manual ordering via position + reorder endpoint
+//  - Password hashing PBKDF2
+//  - Robust error responses
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 const SESSION_COOKIE = "sid";
 
-/* ============ Common Utils ============ */
 function json(obj, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(obj), {
     status,
     headers: { ...JSON_HEADERS, ...extraHeaders }
   });
 }
+
 class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
   }
 }
-async function parseJson(request) {
+
+async function parseJson(req) {
   try {
-    return await request.json();
+    return await req.json();
   } catch {
     throw new HttpError(400, "JSON 解析失败");
   }
 }
+
 function parseCookie(str) {
   return Object.fromEntries(
-    str.split(/;\s*/).filter(Boolean).map(c => {
-      const eq = c.indexOf("=");
-      if (eq === -1) return [c, ""];
-      return [c.slice(0, eq), c.slice(eq + 1)];
-    })
+    (str || "")
+      .split(/;\s*/)
+      .filter(Boolean)
+      .map(p => {
+        const i = p.indexOf("=");
+        if (i < 0) return [p, ""];
+        return [p.slice(0, i), p.slice(i + 1)];
+      })
   );
 }
+
 function setSessionCookie(token, ttlSec) {
   return {
     "Set-Cookie": `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${ttlSec}`
   };
 }
+
 function clearSessionCookie() {
   return {
     "Set-Cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
   };
 }
+
 function generateToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   let str = btoa(String.fromCharCode(...bytes));
   return str.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-function b64(u8) { return btoa(String.fromCharCode(...u8)); }
+
+const b64 = u8 => btoa(String.fromCharCode(...u8));
 function b64ToBytes(b64str) {
   const bin = atob(b64str);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return arr;
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
 }
 
-/* ============ Entry ============ */
 export async function onRequest(context) {
   const { request, env, next } = context;
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/")) return next();
+
   try {
-    return await handleApi(request, env);
+    return await route(request, env);
   } catch (e) {
-    if (e instanceof HttpError) {
-      return json({ error: e.message }, e.status);
-    }
-    console.error("UNHANDLED API ERROR:", e);
-    return json({ error: "Internal Error", detail: e.message }, 500);
+    if (e instanceof HttpError) return json({ error: e.message }, e.status);
+    console.error("UNHANDLED ERROR:", e);
+    return json({ error: "Internal Error" }, 500);
   }
 }
 
-/* ============ Router ============ */
-async function handleApi(request, env) {
+async function route(request, env) {
   const url = new URL(request.url);
-  const { pathname } = url;
+  const { pathname, searchParams } = url;
   const method = request.method.toUpperCase();
 
-  // Health
   if (pathname === "/api/health" && method === "GET") {
     return json({ ok: true, ts: Date.now() });
   }
 
-  const session = await getSessionFromRequest(request, env);
-  const user = session ? await getUserById(env, session.userId) : null;
+  const session = await getSession(request, env);
+  const user = session ? await getUser(env, session.userId) : null;
 
   // Auth
   if (pathname === "/api/auth/register" && method === "POST") return register(request, env);
@@ -107,16 +113,21 @@ async function handleApi(request, env) {
   // Blocks
   if (pathname === "/api/blocks" && method === "GET") {
     requireAuth(user);
-    return listBlocks(env, user.id);
+    const sort = searchParams.get("sort") || "position";
+    return listBlocks(env, user.id, sort);
   }
   if (pathname === "/api/blocks" && method === "POST") {
     requireAuth(user);
     return createBlock(request, env, user.id);
   }
-  const blockMatch = pathname.match(/^\/api\/blocks\/([^/]+)$/);
-  if (blockMatch) {
+  if (pathname === "/api/blocks/reorder" && method === "POST") {
     requireAuth(user);
-    const blockId = blockMatch[1];
+    return reorderBlocks(request, env, user.id);
+  }
+  const matchBlock = pathname.match(/^\/api\/blocks\/([^/]+)$/);
+  if (matchBlock) {
+    requireAuth(user);
+    const blockId = matchBlock[1];
     if (method === "PUT") return updateBlock(request, env, user.id, blockId);
     if (method === "DELETE") return deleteBlock(env, user.id, blockId);
   }
@@ -126,28 +137,25 @@ async function handleApi(request, env) {
     requireAuth(user);
     return uploadImage(request, env, user.id);
   }
-  const imageMatch = pathname.match(/^\/api\/images\/([^/]+)$/);
-  if (imageMatch && method === "GET") {
+  const matchImg = pathname.match(/^\/api\/images\/([^/]+)$/);
+  if (matchImg && method === "GET") {
     requireAuth(user);
-    return getImage(env, user.id, imageMatch[1]);
+    return getImage(env, user.id, matchImg[1]);
   }
 
   return json({ error: "Not Found" }, 404);
 }
 
-/* ============ Auth ============ */
+/* ================= Auth ================= */
 async function register(request, env) {
   const { email, password, name, inviteCode } = await parseJson(request);
   if (!email || !password) throw new HttpError(400, "缺少 email 或 password");
+  const required = env.INVITE_CODE;
+  if (!required) throw new HttpError(500, "服务器未配置邀请码");
+  if (!inviteCode || inviteCode !== required) throw new HttpError(400, "邀请码无效");
 
-  const REQUIRED = env.INVITE_CODE || "WebtipS";
-  if (!inviteCode || inviteCode !== REQUIRED) {
-    throw new HttpError(400, "邀请码无效");
-  }
-
-  const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?")
-    .bind(email).first();
-  if (existing) throw new HttpError(400, "邮箱已注册");
+  const dup = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+  if (dup) throw new HttpError(400, "邮箱已注册");
 
   const id = crypto.randomUUID();
   const password_hash = await hashPassword(password, env);
@@ -163,12 +171,10 @@ async function register(request, env) {
 async function login(request, env) {
   const { email, password } = await parseJson(request);
   if (!email || !password) throw new HttpError(400, "缺少 email 或 password");
-
   const row = await env.DB.prepare(
     "SELECT id, email, password_hash, name, created_at FROM users WHERE email = ?"
   ).bind(email).first();
   if (!row) throw new HttpError(400, "用户不存在");
-
   const ok = await verifyPassword(password, row.password_hash);
   if (!ok) throw new HttpError(401, "密码错误");
 
@@ -178,20 +184,36 @@ async function login(request, env) {
   await env.KV.put(`session:${token}`, JSON.stringify({ userId: row.id, exp }), {
     expirationTtl: ttlSec
   });
-
   return json({ user: publicUser(row) }, 200, setSessionCookie(token, ttlSec));
 }
 
 async function logout(request, env) {
-  const session = await getSessionFromRequest(request, env);
+  const session = await getSession(request, env);
   if (session) await env.KV.delete(`session:${session.token}`);
   return json({ ok: true }, 200, clearSessionCookie());
 }
 
-/* ============ Blocks ============ */
-async function listBlocks(env, userId) {
+/* ================= Blocks ================= */
+async function listBlocks(env, userId, sortMode) {
+  let orderClause;
+  switch (sortMode) {
+    case "created":
+      orderClause = "ORDER BY created_at DESC";
+      break;
+    case "updated":
+      orderClause = "ORDER BY COALESCE(updated_at, created_at) DESC";
+      break;
+    case "position":
+    default:
+      // manual order
+      orderClause = "ORDER BY position ASC";
+      break;
+  }
   const rs = await env.DB.prepare(
-    "SELECT id, content, created_at, updated_at FROM blocks WHERE user_id = ? ORDER BY created_at ASC"
+    `SELECT id, content, created_at, updated_at, position
+     FROM blocks
+     WHERE user_id = ?
+     ${orderClause}`
   ).bind(userId).all();
   return json({ blocks: rs.results || [] });
 }
@@ -204,12 +226,19 @@ async function createBlock(request, env, userId) {
   let content = body.content;
   if (content == null) content = "";
   if (typeof content !== "string") content = String(content);
+  // get max position
+  const row = await env.DB.prepare("SELECT MAX(position) AS m FROM blocks WHERE user_id = ?")
+    .bind(userId).first();
+  const nextPos = (row?.m ?? 0) + 1;
+
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+
   await env.DB.prepare(
-    "INSERT INTO blocks (id, user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
-  ).bind(id, userId, content, now, now).run();
-  return json({ block: { id, content, created_at: now, updated_at: now } }, 201);
+    "INSERT INTO blocks (id, user_id, content, created_at, updated_at, position) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(id, userId, content, now, now, nextPos).run();
+
+  return json({ block: { id, content, created_at: now, updated_at: now, position: nextPos } }, 201);
 }
 
 async function updateBlock(request, env, userId, blockId) {
@@ -220,25 +249,54 @@ async function updateBlock(request, env, userId, blockId) {
   let content = body.content;
   if (content == null) content = "";
   if (typeof content !== "string") content = String(content);
+
   const owned = await env.DB.prepare(
-    "SELECT id, created_at FROM blocks WHERE id = ? AND user_id = ?"
+    "SELECT id, created_at, position FROM blocks WHERE id = ? AND user_id = ?"
   ).bind(blockId, userId).first();
   if (!owned) throw new HttpError(404, "不存在或无权限");
   const now = new Date().toISOString();
   await env.DB.prepare(
     "UPDATE blocks SET content = ?, updated_at = ? WHERE id = ?"
   ).bind(content, now, blockId).run();
-  return json({ block: { id: blockId, content, created_at: owned.created_at, updated_at: now } });
+
+  return json({
+    block: {
+      id: blockId,
+      content,
+      created_at: owned.created_at,
+      updated_at: now,
+      position: owned.position
+    }
+  });
 }
 
 async function deleteBlock(env, userId, blockId) {
-  await env.DB.prepare(
-    "DELETE FROM blocks WHERE id = ? AND user_id = ?"
-  ).bind(blockId, userId).run();
+  await env.DB.prepare("DELETE FROM blocks WHERE id = ? AND user_id = ?")
+    .bind(blockId, userId).run();
   return json({ ok: true });
 }
 
-/* ============ Images ============ */
+async function reorderBlocks(request, env, userId) {
+  const body = await parseJson(request);
+  if (!body || !Array.isArray(body.order)) {
+    throw new HttpError(400, "缺少 order 数组");
+  }
+  // Simple transactional-like approach (D1 has limited transaction support)
+  // We'll update one by one.
+  for (const item of body.order) {
+    if (!item || !item.id || typeof item.position !== "number") {
+      throw new HttpError(400, "order 元素格式错误");
+    }
+  }
+  for (const item of body.order) {
+    await env.DB.prepare(
+      "UPDATE blocks SET position = ? WHERE id = ? AND user_id = ?"
+    ).bind(item.position, item.id, userId).run();
+  }
+  return listBlocks(env, userId, "position");
+}
+
+/* ================= Images ================= */
 async function uploadImage(request, env, userId) {
   const ct = request.headers.get("Content-Type") || "";
   if (!ct.startsWith("multipart/form-data"))
@@ -248,13 +306,17 @@ async function uploadImage(request, env, userId) {
   if (!file || typeof file === "string") throw new HttpError(400, "未找到文件");
   const buf = await file.arrayBuffer();
   if (buf.byteLength > 2 * 1024 * 1024) throw new HttpError(400, "文件过大 (>2MB)");
+
   const id = crypto.randomUUID();
   const mime = file.type || "application/octet-stream";
   const created_at = new Date().toISOString();
+
   await env.DB.prepare(
     "INSERT INTO images (id, user_id, mime, size, created_at) VALUES (?, ?, ?, ?, ?)"
   ).bind(id, userId, mime, buf.byteLength, created_at).run();
+
   await env.KV.put(`image:${id}`, buf);
+
   return json({ image: { id, mime, size: buf.byteLength, url: `/api/images/${id}`, created_at } }, 201);
 }
 
@@ -264,8 +326,10 @@ async function getImage(env, userId, id) {
   ).bind(id).first();
   if (!row) throw new HttpError(404, "不存在");
   if (row.user_id !== userId) throw new HttpError(403, "无权限");
+
   const data = await env.KV.get(`image:${id}`, "arrayBuffer");
   if (!data) throw new HttpError(404, "内容缺失");
+
   return new Response(data, {
     headers: {
       "Content-Type": row.mime,
@@ -274,8 +338,8 @@ async function getImage(env, userId, id) {
   });
 }
 
-/* ============ Session & User Helpers ============ */
-async function getSessionFromRequest(request, env) {
+/* ================= Session & User ================= */
+async function getSession(request, env) {
   const cookie = parseCookie(request.headers.get("Cookie") || "");
   const token = cookie[SESSION_COOKIE];
   if (!token) return null;
@@ -288,32 +352,34 @@ async function getSessionFromRequest(request, env) {
   }
   return { token, ...obj };
 }
-async function getUserById(env, id) {
+
+async function getUser(env, id) {
   if (!id) return null;
   return await env.DB.prepare(
     "SELECT id, email, name, created_at FROM users WHERE id = ?"
   ).bind(id).first();
 }
+
 function publicUser(u) {
   if (!u) return null;
   return { id: u.id, email: u.email, name: u.name, created_at: u.created_at };
 }
+
 function requireAuth(user) {
   if (!user) throw new HttpError(401, "未认证");
 }
 
-/* ============ Crypto ============ */
+/* ================= Password Hash ================= */
 function getIterations(env) {
   const raw = parseInt(env.PBKDF2_ITER || "100000", 10);
   return Math.min(raw > 0 ? raw : 100000, 100000);
 }
+
 async function hashPassword(password, env) {
   const iterations = getIterations(env);
   const enc = new TextEncoder();
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]
-  );
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
   const hashBuffer = await crypto.subtle.deriveBits(
     { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
     keyMaterial,
@@ -322,6 +388,7 @@ async function hashPassword(password, env) {
   const hash = new Uint8Array(hashBuffer);
   return `pbkdf2$${iterations}$${b64(salt)}$${b64(hash)}`;
 }
+
 async function verifyPassword(password, stored) {
   try {
     const [scheme, iterStr, saltB64, hashB64] = stored.split("$");
@@ -330,9 +397,7 @@ async function verifyPassword(password, stored) {
     const salt = b64ToBytes(saltB64);
     const hash = b64ToBytes(hashB64);
     const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey(
-      "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]
-    );
+    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
     const testBuf = await crypto.subtle.deriveBits(
       { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
       keyMaterial,
@@ -344,6 +409,7 @@ async function verifyPassword(password, stored) {
     return false;
   }
 }
+
 function timingSafeEqual(a, b) {
   if (a.length !== b.length) return false;
   let diff = 0;
