@@ -11,7 +11,7 @@ import { Undo2, Redo2 } from "lucide-react";
 
 const MAX_HISTORY = 200;
 const HISTORY_GROUP_MS = 800;
-const INDENT = "  "; // 两空格
+const INDENT = "  "; // 两个空格
 
 export default function BlockEditorAuto({
   block,
@@ -29,7 +29,7 @@ export default function BlockEditorAuto({
   const [showPreview, setShowPreview] = useState(true);
   const [previewMode, setPreviewMode] = useState(
     () => localStorage.getItem("previewMode") || "vertical"
-  ); // vertical=左右, horizontal=上下
+  ); // vertical=左右 horizontal=上下
   const [splitRatio, setSplitRatio] = useState(() => {
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
@@ -41,7 +41,8 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
 
   /* ---------------- Refs ---------------- */
-  const rootRef = useRef(null);
+  const rootRef = useRef(null);                // 整个组件
+  const splitContainerRef = useRef(null);      // 仅分屏区域（用于测量）
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -76,20 +77,24 @@ export default function BlockEditorAuto({
       .replace(/"/g, "&quot;");
   }
 
-  // 仅解析图片，不解析其它 markdown
-  function renderPlainWithImages(text) {
-    if (!text) return "<span class='text-slate-400'>暂无内容</span>";
-    const escaped = escapeHtml(text);
-    // 匹配 ![alt](url)
-    const imgRe = /!\[([^\]]*?)\]\((https?:\/\/[^\s)]+)\)/g;
-    const replaced = escaped.replace(imgRe, (_, alt, url) => {
-      const safeAlt = alt.replace(/"/g, "&quot;");
-      const safeUrl = url.replace(/"/g, "%22");
-      return `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" class="inline-block max-w-full border border-slate-200 dark:border-slate-600 rounded-md my-1" />`;
-    });
-    return replaced
-      .replace(/\r\n/g, "\n")
-      .replace(/\n/g, "<br/>");
+  // 仅解析图片，支持相对路径/绝对路径，其它 markdown 仍显示纯文本
+  function renderPlainWithImages(raw) {
+    if (!raw) return "<span class='text-slate-400'>暂无内容</span>";
+    const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
+    let out = "";
+    let lastIndex = 0;
+    let m;
+    while ((m = re.exec(raw)) !== null) {
+      const [full, alt, url] = m;
+      const before = raw.slice(lastIndex, m.index);
+      out += escapeHtml(before);
+      const safeAlt = escapeHtml(alt || "");
+      const safeUrl = escapeHtml(url);
+      out += `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" class="inline-block max-w-full border border-slate-200 dark:border-slate-600 rounded-md my-1" />`;
+      lastIndex = m.index + full.length;
+    }
+    out += escapeHtml(raw.slice(lastIndex));
+    return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
   }
 
   function updatePreview(text) {
@@ -112,17 +117,12 @@ export default function BlockEditorAuto({
         : undefined;
 
     if (!forceSeparate && since < HISTORY_GROUP_MS) {
-      // 同组
-      if (lastSnap !== newContent) {
-        // 替换当前
-        if (historyIndexRef.current >= 0)
-          historyRef.current[historyIndexRef.current] = newContent;
+      if (lastSnap !== newContent && historyIndexRef.current >= 0) {
+        historyRef.current[historyIndexRef.current] = newContent;
       }
       lastHistoryPushTimeRef.current = now;
       return;
     }
-
-    // 剪掉 redo 分支
     if (historyIndexRef.current < historyRef.current.length - 1) {
       historyRef.current.splice(historyIndexRef.current + 1);
     }
@@ -156,11 +156,8 @@ export default function BlockEditorAuto({
     if (!ctrl) return;
     if (e.key === "z" || e.key === "Z") {
       e.preventDefault();
-      if (e.shiftKey) {
-        restoreHistory(+1); // Cmd+Shift+Z redo
-      } else {
-        restoreHistory(-1);
-      }
+      if (e.shiftKey) restoreHistory(+1);
+      else restoreHistory(-1);
     } else if (e.key === "y" || e.key === "Y") {
       e.preventDefault();
       restoreHistory(+1);
@@ -182,7 +179,7 @@ export default function BlockEditorAuto({
     requestAnimationFrame(syncLineNumbersPadding);
   }, [block?.id]);
 
-  /* ---------------- Effects: showPreview / mode / ratio ---------------- */
+  /* ---------------- Effects: preview / mode ---------------- */
   useEffect(() => {
     updatePreview(content);
   }, [content]);
@@ -237,11 +234,8 @@ export default function BlockEditorAuto({
       try {
         real = await onImmediateSave(block.id, payload);
       } catch (err) {
-        if (safeUpdateFallback) {
-          real = await safeUpdateFallback(block.id, payload, err);
-        } else {
-          throw err;
-        }
+        if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err);
+        else throw err;
       }
       if (currentBlockIdRef.current === savedBlock) {
         lastPersisted.current = { content };
@@ -375,8 +369,8 @@ export default function BlockEditorAuto({
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
 
-    // 获取当前选区完整行
     const text = content;
+    // 选区所在的完整行
     const lineStartIdx = text.lastIndexOf("\n", start - 1) + 1;
     const lineEndIdx = text.indexOf("\n", end);
     const effectiveEnd = lineEndIdx === -1 ? text.length : lineEndIdx;
@@ -384,11 +378,9 @@ export default function BlockEditorAuto({
     const before = text.slice(0, lineStartIdx);
     const target = text.slice(lineStartIdx, effectiveEnd);
     const after = text.slice(effectiveEnd);
-
     const lines = target.split("\n");
 
     if (e.shiftKey) {
-      // 反缩进
       let removeFirst = 0;
       const newLines = lines.map((l, i) => {
         if (l.startsWith(INDENT)) {
@@ -406,6 +398,8 @@ export default function BlockEditorAuto({
       const adjust = target.length - newTarget.length;
       const newSelEnd = end - adjust;
       setContent(newContent);
+      updateLineNums(newContent);
+      updatePreview(newContent);
       pushHistory(newContent);
       requestAnimationFrame(() => {
         ta.focus();
@@ -413,12 +407,12 @@ export default function BlockEditorAuto({
         captureSel();
       });
     } else {
-      // 正向缩进
       if (lines.length === 1) {
-        // 单行缩进
         const newLine = INDENT + lines[0];
         const newContent = before + newLine + after;
         setContent(newContent);
+        updateLineNums(newContent);
+        updatePreview(newContent);
         pushHistory(newContent);
         requestAnimationFrame(() => {
           const pos = start + INDENT.length;
@@ -427,12 +421,13 @@ export default function BlockEditorAuto({
           captureSel();
         });
       } else {
-        // 多行
         const newLines = lines.map(l => INDENT + l);
         const newTarget = newLines.join("\n");
         const newContent = before + newTarget + after;
         const delta = newLines.length * INDENT.length;
         setContent(newContent);
+        updateLineNums(newContent);
+        updatePreview(newContent);
         pushHistory(newContent);
         requestAnimationFrame(() => {
           ta.focus();
@@ -449,35 +444,48 @@ export default function BlockEditorAuto({
     handleIndentKey(e);
   }
 
-  /* ---------------- Split Drag ---------------- */
+  /* ---------------- Split Drag (修复版) ---------------- */
   function startDrag(e) {
     if (!showPreview) return;
     e.preventDefault();
-    const container = rootRef.current;
+    const container = splitContainerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
     dragMetaRef.current = { rect };
     setDraggingSplit(true);
     document.body.classList.add("editor-resizing");
-    window.addEventListener("pointermove", onDragMove);
-    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("mousemove", onDragMove);
+    window.addEventListener("mouseup", stopDrag);
+    window.addEventListener("touchmove", onDragMove, { passive: false });
+    window.addEventListener("touchend", stopDrag);
   }
   function onDragMove(e) {
     if (!draggingSplit || !dragMetaRef.current) return;
     const rect = dragMetaRef.current.rect;
+    let clientX, clientY;
+    if (e.touches && e.touches[0]) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+      e.preventDefault();
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
     if (previewMode === "vertical") {
-      const ratio = (e.clientX - rect.left) / rect.width;
+      const ratio = (clientX - rect.left) / rect.width;
       setSplitRatio(clamp(ratio, 0.15, 0.85));
     } else {
-      const ratio = (e.clientY - rect.top) / rect.height;
+      const ratio = (clientY - rect.top) / rect.height;
       setSplitRatio(clamp(ratio, 0.15, 0.85));
     }
   }
   function stopDrag() {
     setDraggingSplit(false);
     document.body.classList.remove("editor-resizing");
-    window.removeEventListener("pointermove", onDragMove);
-    window.removeEventListener("pointerup", stopDrag);
+    window.removeEventListener("mousemove", onDragMove);
+    window.removeEventListener("mouseup", stopDrag);
+    window.removeEventListener("touchmove", onDragMove);
+    window.removeEventListener("touchend", stopDrag);
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     localStorage.setItem(key, String(splitRatio));
   }
@@ -586,8 +594,9 @@ export default function BlockEditorAuto({
         </div>
       </div>
 
-      {/* 主区域 */}
+      {/* 分屏容器 */}
       <div
+        ref={splitContainerRef}
         className={`editor-split-root flex-1 min-h-0 flex ${
           showPreview
             ? previewMode === "vertical" ? "flex-row" : "flex-col"
@@ -653,13 +662,15 @@ export default function BlockEditorAuto({
           </div>
         </div>
 
-        {/* 分隔条 */}
+        {/* 分隔条（支持鼠标+触摸，双击重置） */}
         {showPreview && (
           <div
             className={`split-divider ${
               previewMode === "vertical" ? "split-vertical" : "split-horizontal"
             } ${draggingSplit ? "dragging" : ""}`}
+            onMouseDown={startDrag}
             onPointerDown={startDrag}
+            onTouchStart={startDrag}
             onDoubleClick={resetSplit}
             title="拖动调整比例，双击恢复 50%"
           />
