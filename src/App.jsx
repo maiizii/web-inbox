@@ -1,15 +1,15 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
+import { ThemeProvider } from "./context/ThemeContext.jsx";
+import { ToastProvider } from "./hooks/useToast.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import InboxPage from "./pages/InboxPage.jsx";
 import Layout from "./components/layout/Layout.jsx";
-import { ThemeProvider } from "./context/ThemeContext.jsx";
-import { ToastProvider } from "./hooks/useToast.jsx";
 
 function PrivateRoute({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) return <div className="p-6">加载中...</div>;
+  const { user, loaded } = useAuth();
+  if (!loaded) return <div className="p-6 text-sm text-slate-500">加载中...</div>;
   if (!user) return <Navigate to="/auth" replace />;
   return children;
 }
@@ -26,7 +26,7 @@ export default function App() {
                 path="/"
                 element={
                   <PrivateRoute>
-                    <Layout>
+                    <Layout fullScreen>
                       <InboxPage />
                     </Layout>
                   </PrivateRoute>
