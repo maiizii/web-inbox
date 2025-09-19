@@ -97,7 +97,8 @@ export default function BlockEditorAuto({
     setError("");
     const payload = { title, content };
     try {
-      onChange && onChange(block.id, { ...payload, optimistic: true });
+      // 重要：更新时不再标记 optimistic，避免把已有 block 置为禁用
+      onChange && onChange(block.id, { ...payload });
       let real;
       try {
         real = await onImmediateSave(block.id, payload);
@@ -178,11 +179,11 @@ export default function BlockEditorAuto({
     });
   }
 
-  /* ---------- 图片上传（核心重写） ---------- */
+  /* ---------- 图片上传（立即保存，无 optimistic 标记） ---------- */
   async function immediatePersistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
-      onChange && onChange(block.id, { content: newContent, title, optimistic: true });
+      onChange && onChange(block.id, { content: newContent, title });
       const payload = { title, content: newContent };
       let real;
       try {
@@ -202,23 +203,19 @@ export default function BlockEditorAuto({
     if (!file || !block) return;
     const currentBlockId = block.id;
     const tempId = "uploading-" + Date.now() + "-" + Math.random().toString(16).slice(2);
-
-    // 占位符（不加末尾换行，减少被意外编辑的概率）
     const placeholder = `![${tempId}](uploading)`;
 
     setContent(prev => {
-      // 若末尾不是换行且不是开头，则加一个换行再插入
       const needsLeadingNL = prev.length > 0 && !prev.endsWith("\n");
       const insertion = needsLeadingNL ? `\n${placeholder}` : placeholder;
       if (DEBUG_IMG) console.log("[img] insert placeholder", insertion);
-      return prev + insertion + "\n"; // 始终在结尾补一个换行，便于继续输入
+      return prev + insertion + "\n";
     });
 
     try {
       const img = await apiUploadImage(file);
       if (DEBUG_IMG) console.log("[img] upload success", img);
 
-      // 如果用户切换了 block，放弃替换（避免写错 block）
       if (!block || block.id !== currentBlockId) {
         if (DEBUG_IMG) console.log("[img] block changed during upload, abort replace");
         return;
@@ -227,8 +224,6 @@ export default function BlockEditorAuto({
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, `![image](${img.url})`);
-        if (DEBUG_IMG) console.log("[img] replaced placeholder count:", prev === replaced ? 0 : 1);
-        // 立即持久化
         immediatePersistAfterImage(replaced);
         return replaced;
       });
@@ -236,7 +231,6 @@ export default function BlockEditorAuto({
       toast.push("图片已上传", { type: "success" });
     } catch (e) {
       if (DEBUG_IMG) console.error("[img] upload failed", e);
-      // 失败也要替换占位，防止残留 uploading
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, "![失败](#)");
@@ -279,6 +273,9 @@ export default function BlockEditorAuto({
     return <div className="flex items-center justify-center h-full text-sm text-slate-400">请选择左侧 Block 或点击“新建”</div>;
   }
 
+  // 仅在“正在创建的临时块”禁用（id 以 tmp- 开头且 optimistic）
+  const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
+
   return (
     <div
       className="h-full flex flex-col"
@@ -290,16 +287,16 @@ export default function BlockEditorAuto({
       <div className="flex items-center gap-3 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
         <input
           className="text-xl font-semibold bg-transparent outline-none flex-1 placeholder-slate-400"
-          placeholder="标题..."
-          value={title}
-          disabled={block.optimistic}
+            placeholder="标题..."
+            value={title}
+            disabled={disabledByCreation}
             onFocus={onTitleFocus}
-          onChange={e => {
-            setTitle(e.target.value);
-            setTitleManuallyEdited(true);
-            shouldRestoreFocusRef.current = true;
-          }}
-          onBlur={onBlur}
+            onChange={e => {
+              setTitle(e.target.value);
+              setTitleManuallyEdited(true);
+              shouldRestoreFocusRef.current = true;
+            }}
+            onBlur={onBlur}
         />
         <div className="flex items-center gap-2 text-xs">
           <button
@@ -349,7 +346,7 @@ export default function BlockEditorAuto({
                 className="editor-textarea custom-scroll"
                 value={content}
                 placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
-                disabled={block.optimistic}
+                disabled={disabledByCreation}
                 wrap="off"
                 onChange={e => {
                   setContent(e.target.value);
