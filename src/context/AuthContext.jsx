@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { apiMe, apiLogout, apiLogin } from "../api/cloudflare.js";
+import { apiLogin, apiLogout, apiMe } from "../api/cloudflare.js";
 
 const AuthCtx = createContext(null);
 
@@ -12,7 +12,6 @@ export function AuthProvider({ children }) {
       const data = await apiMe();
       setUser(data.user || data || null);
     } catch (e) {
-      // 若未登录或 401
       if (e.status === 401) {
         setUser(null);
       } else {
@@ -31,14 +30,13 @@ export function AuthProvider({ children }) {
     await apiLogin(email, password);
     await refreshUser();
   }
-
   async function logout() {
     try { await apiLogout(); } catch {}
     setUser(null);
   }
 
   return (
-    <AuthCtx.Provider value={{ user, loaded, refreshUser, login, logout }}>
+    <AuthCtx.Provider value={{ user, loaded, loading: !loaded, refreshUser, login, logout }}>
       {children}
     </AuthCtx.Provider>
   );
