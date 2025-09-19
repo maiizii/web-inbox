@@ -4,8 +4,6 @@ import { apiUploadImage } from "../../api/cloudflare.js";
 import { useToast } from "../../hooks/useToast.jsx";
 import { renderMarkdown } from "../../lib/markdown.js";
 
-const DEBUG_IMG = false;
-
 export default function BlockEditorAuto({
   block,
   onChange,
@@ -19,15 +17,15 @@ export default function BlockEditorAuto({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showPreview, setShowPreview] = useState(true);
-  const [titleManuallyEdited, setTitleManuallyEdited] = useState(false);
   const [previewMode, setPreviewMode] = useState(
     () => localStorage.getItem("previewMode") || "vertical"
-  );
-
-  useEffect(() => { localStorage.setItem("previewMode", previewMode); }, [previewMode]);
+  ); // vertical=左右 horizontal=上下
+  const [titleManuallyEdited, setTitleManuallyEdited] = useState(false);
 
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+
   const selectionRef = useRef({ start: null, end: null });
   const userManuallyBlurredRef = useRef(false);
   const shouldRestoreFocusRef = useRef(false);
@@ -35,10 +33,14 @@ export default function BlockEditorAuto({
 
   const [previewHtml, setPreviewHtml] = useState("");
 
+  useEffect(() => localStorage.setItem("previewMode", previewMode), [previewMode]);
+
+  /* 预览 */
   useEffect(() => {
     if (showPreview) setPreviewHtml(renderMarkdown(content));
   }, [content, showPreview]);
 
+  /* 切换 block */
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
@@ -47,9 +49,10 @@ export default function BlockEditorAuto({
     setTitleManuallyEdited(!!(block && block.title));
     userManuallyBlurredRef.current = false;
     shouldRestoreFocusRef.current = false;
-    syncLineNumberPadTop();
+    syncLineNumbersPadding();
   }, [block?.id]);
 
+  /* 自动标题 */
   useEffect(() => {
     if (!block) return;
     if (!titleManuallyEdited && !title && content) {
@@ -63,24 +66,23 @@ export default function BlockEditorAuto({
       content !== lastPersisted.current.content);
 
   function captureSel() {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    selectionRef.current = { start: ta.selectionStart, end: ta.selectionEnd };
+    if (!textareaRef.current) return;
+    selectionRef.current = {
+      start: textareaRef.current.selectionStart,
+      end: textareaRef.current.selectionEnd
+    };
   }
   function restoreSel() {
     const ta = textareaRef.current;
-    if (!ta) return;
     const { start, end } = selectionRef.current;
-    if (start != null && end != null) {
-      try { ta.setSelectionRange(start, end); } catch {}
-    }
+    if (!ta || start == null || end == null) return;
+    try { ta.setSelectionRange(start, end); } catch {}
   }
   function maybeRestoreFocus() {
     if (userManuallyBlurredRef.current) return;
     if (!shouldRestoreFocusRef.current) return;
-    const ta = textareaRef.current;
-    if (ta && document.activeElement !== ta) {
-      ta.focus();
+    if (textareaRef.current && document.activeElement !== textareaRef.current) {
+      textareaRef.current.focus();
       restoreSel();
     }
   }
@@ -130,44 +132,31 @@ export default function BlockEditorAuto({
   }
   const lineNumbersString = getLineNumbersString(content);
 
-  function syncLineNumberPadTop() {
+  function syncLineNumbersPadding() {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
     if (!ta || !inner) return;
     const padTop = parseFloat(getComputedStyle(ta).paddingTop) || 0;
     inner.style.top = padTop + "px";
   }
-  function onTextareaScroll(e) {
+
+  function onEditorScroll(e) {
     const scrollTop = e.target.scrollTop;
     if (lineNumbersInnerRef.current) {
       lineNumbersInnerRef.current.style.transform = `translateY(${-scrollTop}px)`;
     }
   }
+
   useEffect(() => {
-    syncLineNumberPadTop();
-    const onResize = () => syncLineNumberPadTop();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    syncLineNumbersPadding();
+    window.addEventListener("resize", syncLineNumbersPadding);
+    return () => window.removeEventListener("resize", syncLineNumbersPadding);
   }, []);
 
-  function insertAtCursor(text) {
-    const ta = textareaRef.current;
-    if (!ta) {
-      setContent(c => c + text);
-      return;
-    }
-    captureSel();
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    setContent(c => c.slice(0, start) + text + c.slice(end));
-    requestAnimationFrame(() => {
-      const pos = start + text.length;
-      selectionRef.current = { start: pos, end: pos };
-      if (document.activeElement === ta) {
-        ta.selectionStart = ta.selectionEnd = pos;
-      }
-    });
-  }
+  useEffect(() => {
+    if (!block) return;
+    requestAnimationFrame(maybeRestoreFocus);
+  }, [content, title, block?.id]);
 
   async function immediatePersistAfterImage(newContent) {
     if (!block || block.optimistic) return;
@@ -193,9 +182,8 @@ export default function BlockEditorAuto({
     const tempId = "uploading-" + Date.now() + "-" + Math.random().toString(16).slice(2);
     const placeholder = `![${tempId}](uploading)`;
     setContent(prev => {
-      const needsNL = prev.length > 0 && !prev.endsWith("\n");
-      const insertion = needsNL ? `\n${placeholder}` : placeholder;
-      return prev + insertion + "\n";
+      const nl = prev.length > 0 && !prev.endsWith("\n") ? "\n" : "";
+      return prev + nl + placeholder + "\n";
     });
     try {
       const img = await apiUploadImage(file);
@@ -234,16 +222,15 @@ export default function BlockEditorAuto({
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
     if (!files.length) return;
-    for (const file of files) await uploadOne(file);
+    for (const f of files) await uploadOne(f);
   }, [block]);
 
-  useEffect(() => {
-    if (!block) return;
-    requestAnimationFrame(maybeRestoreFocus);
-  }, [content, title, block?.id]);
-
   if (!block) {
-    return <div className="flex items-center justify-center h-full text-sm text-slate-400">请选择左侧 Block 或点击“新建”</div>;
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-slate-400">
+        请选择左侧 Block 或点击“新建”
+      </div>
+    );
   }
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
@@ -255,7 +242,7 @@ export default function BlockEditorAuto({
       onDrop={handleDrop}
       onDragOver={e => e.preventDefault()}
     >
-      {/* 工具栏 */}
+      {/* Toolbar */}
       <div className="flex items-center gap-3 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
         <input
           className="text-xl font-semibold bg-transparent outline-none flex-1 placeholder-slate-400"
@@ -304,24 +291,27 @@ export default function BlockEditorAuto({
         </div>
       </div>
 
-      {/* 主体区域 */}
-      <div className={`flex-1 flex min-h-0 ${
-        showPreview
-          ? previewMode === "vertical"
-            ? ""
-            : "flex-col"
-          : ""
-      }`}>
-        {/* 编辑器容器（根据模式设置尺寸 + 滚动行为） */}
-        <div className={
+      {/* Split Container */}
+      <div
+        className={`flex-1 min-h-0 flex ${
           showPreview
             ? previewMode === "vertical"
-              ? "flex-1 flex flex-col w-1/2"
-              : "h-1/2 flex flex-col"
-            : "flex-1 flex flex-col"
-        }>
-          <div className="flex-1 relative overflow-hidden">
-            {/* 独立滚动层：上下模式时需要滚动；左右模式也统一使用，保持一致体验 */}
+              ? "flex-row"
+              : "flex-col"
+            : "flex-col"
+        }`}
+      >
+        {/* Editor Pane */}
+        <div
+          className={
+            showPreview
+              ? previewMode === "vertical"
+                ? "w-1/2 h-full flex flex-col border-r border-slate-200 dark:border-slate-700"
+                : "h-1/2 w-full flex flex-col border-b border-slate-200 dark:border-slate-700"
+              : "flex-1 flex flex-col"
+          }
+        >
+          <div className="flex-1 relative">
             <div className="absolute inset-0 flex overflow-hidden">
               <div className="editor-line-numbers">
                 <pre
@@ -332,13 +322,17 @@ export default function BlockEditorAuto({
                   {lineNumbersString}
                 </pre>
               </div>
-              <div className="flex-1 h-full overflow-auto custom-scroll">
+              <div
+                ref={scrollContainerRef}
+                className="flex-1 h-full overflow-auto custom-scroll"
+                onScroll={onEditorScroll}
+              >
                 <textarea
                   ref={textareaRef}
                   className="editor-textarea"
                   value={content}
-                  placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
                   disabled={disabledByCreation}
+                  placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
                   wrap="off"
                   onChange={e => {
                     setContent(e.target.value);
@@ -346,31 +340,32 @@ export default function BlockEditorAuto({
                     userManuallyBlurredRef.current = false;
                     captureSel();
                   }}
-                  onScroll={onTextareaScroll}
                   onFocus={onContentFocus}
+                  onBlur={onBlur}
                   onClick={captureSel}
                   onKeyUp={captureSel}
-                  onBlur={onBlur}
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* 预览 */}
+        {/* Preview Pane */}
         {showPreview && (
-          <div className={
-            previewMode === "vertical"
-              ? "w-1/2 border-l border-slate-200 dark:border-slate-700 overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert"
-              : "h-1/2 border-t border-slate-200 dark:border-slate-700 overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert"
-          }>
             <div
-              dangerouslySetInnerHTML={{
-                __html: previewHtml || "<p class='text-slate-400'>暂无内容</p>"
-              }}
-            />
-          </div>
-        )}
+              className={
+                previewMode === "vertical"
+                  ? "w-1/2 h-full overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert"
+                  : "h-1/2 w-full overflow-auto custom-scroll p-4 prose prose-sm dark:prose-invert"
+              }
+            >
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: previewHtml || "<p class='text-slate-400'>暂无内容</p>"
+                }}
+              />
+            </div>
+          )}
       </div>
     </div>
   );
