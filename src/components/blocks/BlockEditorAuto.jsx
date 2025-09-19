@@ -24,9 +24,7 @@ export default function BlockEditorAuto({
     () => localStorage.getItem("previewMode") || "vertical"
   );
 
-  useEffect(() => {
-    localStorage.setItem("previewMode", previewMode);
-  }, [previewMode]);
+  useEffect(() => { localStorage.setItem("previewMode", previewMode); }, [previewMode]);
 
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
@@ -37,19 +35,14 @@ export default function BlockEditorAuto({
 
   const [previewHtml, setPreviewHtml] = useState("");
 
-  /* 预览 */
   useEffect(() => {
     if (showPreview) setPreviewHtml(renderMarkdown(content));
   }, [content, showPreview]);
 
-  /* 切换 block */
   useEffect(() => {
     setTitle(block?.title || "");
     setContent(block?.content || "");
-    lastPersisted.current = {
-      title: block?.title || "",
-      content: block?.content || ""
-    };
+    lastPersisted.current = { title: block?.title || "", content: block?.content || "" };
     setError("");
     setTitleManuallyEdited(!!(block && block.title));
     userManuallyBlurredRef.current = false;
@@ -57,11 +50,10 @@ export default function BlockEditorAuto({
     syncLineNumberPadTop();
   }, [block?.id]);
 
-  /* 自动标题 */
   useEffect(() => {
     if (!block) return;
     if (!titleManuallyEdited && !title && content) {
-      setTitle(content.split("\n")[0].slice(0, 10));
+      setTitle(content.split("\n")[0].slice(0, 16));
     }
   }, [content, title, titleManuallyEdited, block]);
 
@@ -70,14 +62,10 @@ export default function BlockEditorAuto({
     (title !== lastPersisted.current.title ||
       content !== lastPersisted.current.content);
 
-  /* 选区/焦点 */
   function captureSel() {
     const ta = textareaRef.current;
     if (!ta) return;
-    selectionRef.current = {
-      start: ta.selectionStart,
-      end: ta.selectionEnd
-    };
+    selectionRef.current = { start: ta.selectionStart, end: ta.selectionEnd };
   }
   function restoreSel() {
     const ta = textareaRef.current;
@@ -97,7 +85,6 @@ export default function BlockEditorAuto({
     }
   }
 
-  /* 保存 */
   async function doSave() {
     if (!block || !dirty || block.optimistic) return;
     setSaving(true);
@@ -109,9 +96,8 @@ export default function BlockEditorAuto({
       try {
         real = await onImmediateSave(block.id, payload);
       } catch (e) {
-        if (safeUpdateFallback) {
-          real = await safeUpdateFallback(block.id, payload, e);
-        } else throw e;
+        if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, e);
+        else throw e;
       }
       lastPersisted.current = { title, content };
     } catch (e) {
@@ -138,7 +124,6 @@ export default function BlockEditorAuto({
     captureSel();
   }
 
-  /* 行号 */
   function getLineNumbersString(text) {
     if (text === "") return "1";
     return text.split("\n").map((_, i) => i + 1).join("\n");
@@ -165,7 +150,6 @@ export default function BlockEditorAuto({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  /* 插入文本 */
   function insertAtCursor(text) {
     const ta = textareaRef.current;
     if (!ta) {
@@ -185,7 +169,6 @@ export default function BlockEditorAuto({
     });
   }
 
-  /* 图片上传立即保存 */
   async function immediatePersistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -195,9 +178,8 @@ export default function BlockEditorAuto({
       try {
         real = await onImmediateSave(block.id, payload);
       } catch (e) {
-        if (safeUpdateFallback) {
-          real = await safeUpdateFallback(block.id, payload, e);
-        } else throw e;
+        if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, e);
+        else throw e;
       }
       lastPersisted.current = { title, content: newContent };
     } catch (e) {
@@ -210,33 +192,22 @@ export default function BlockEditorAuto({
     const currentBlockId = block.id;
     const tempId = "uploading-" + Date.now() + "-" + Math.random().toString(16).slice(2);
     const placeholder = `![${tempId}](uploading)`;
-
     setContent(prev => {
-      const needsLeadingNL = prev.length > 0 && !prev.endsWith("\n");
-      const insertion = needsLeadingNL ? `\n${placeholder}` : placeholder;
-      if (DEBUG_IMG) console.log("[img] insert placeholder", insertion);
+      const needsNL = prev.length > 0 && !prev.endsWith("\n");
+      const insertion = needsNL ? `\n${placeholder}` : placeholder;
       return prev + insertion + "\n";
     });
-
     try {
       const img = await apiUploadImage(file);
-      if (DEBUG_IMG) console.log("[img] upload success", img);
-
-      if (!block || block.id !== currentBlockId) {
-        if (DEBUG_IMG) console.log("[img] block changed during upload, abort replace");
-        return;
-      }
-
+      if (!block || block.id !== currentBlockId) return;
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, `![image](${img.url})`);
         immediatePersistAfterImage(replaced);
         return replaced;
       });
-
       toast.push("图片已上传", { type: "success" });
     } catch (e) {
-      if (DEBUG_IMG) console.error("[img] upload failed", e);
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, "![失败](#)");
@@ -247,7 +218,7 @@ export default function BlockEditorAuto({
     }
   }
 
-  const handlePaste = useCallback(async (e) => {
+  const handlePaste = useCallback(async e => {
     if (!block) return;
     const items = Array.from(e.clipboardData.items).filter(it => it.type.startsWith("image/"));
     if (!items.length) return;
@@ -258,14 +229,12 @@ export default function BlockEditorAuto({
     }
   }, [block]);
 
-  const handleDrop = useCallback(async (e) => {
+  const handleDrop = useCallback(async e => {
     if (!block) return;
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
     if (!files.length) return;
-    for (const file of files) {
-      await uploadOne(file);
-    }
+    for (const file of files) await uploadOne(file);
   }, [block]);
 
   useEffect(() => {
@@ -305,37 +274,37 @@ export default function BlockEditorAuto({
           <button
             type="button"
             onClick={() => setShowPreview(p => !p)}
-            className="px-2 py-1 border rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="btn-outline-modern !px-3 !py-1.5"
           >
             {showPreview ? "隐藏预览" : "显示预览"}
           </button>
           <button
             type="button"
             onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))}
-            className="px-2 py-1 border rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="btn-outline-modern !px-3 !py-1.5"
             title="切换预览布局"
           >
             {previewMode === "vertical" ? "上下预览" : "左右预览"}
           </button>
-          <div className="text-slate-400 select-none min-w-[56px] text-right">
+          <div className="text-slate-400 select-none min-w-[60px] text-right">
             {saving
-              ? "保存中..."
+              ? "保存中"
               : error
                 ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button>
                 : dirty
-                  ? "待保存..."
+                  ? "待保存"
                   : "已保存"}
           </div>
           <button
             onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }}
-            className="btn-outline-sm !py-1 !px-3"
+            className="btn-danger-modern !px-3 !py-1.5"
           >
             删除
           </button>
         </div>
       </div>
 
-      {/* 主体 */}
+      {/* 主体区域 */}
       <div className={`flex-1 flex min-h-0 ${
         showPreview
           ? previewMode === "vertical"
@@ -343,16 +312,17 @@ export default function BlockEditorAuto({
             : "flex-col"
           : ""
       }`}>
-        {/* 编辑器 */}
+        {/* 编辑器容器（根据模式设置尺寸 + 滚动行为） */}
         <div className={
           showPreview
             ? previewMode === "vertical"
               ? "flex-1 flex flex-col w-1/2"
-              : "flex-1 flex flex-col h-1/2"
+              : "h-1/2 flex flex-col"
             : "flex-1 flex flex-col"
         }>
-          <div className="editor-wrapper flex-1 flex flex-col">
-            <div className="editor-code-area flex-1 relative flex">
+          <div className="flex-1 relative overflow-hidden">
+            {/* 独立滚动层：上下模式时需要滚动；左右模式也统一使用，保持一致体验 */}
+            <div className="absolute inset-0 flex overflow-hidden">
               <div className="editor-line-numbers">
                 <pre
                   ref={lineNumbersInnerRef}
@@ -362,25 +332,27 @@ export default function BlockEditorAuto({
                   {lineNumbersString}
                 </pre>
               </div>
-              <textarea
-                ref={textareaRef}
-                className="editor-textarea custom-scroll"
-                value={content}
-                placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
-                disabled={disabledByCreation}
-                wrap="off"
-                onChange={e => {
-                  setContent(e.target.value);
-                  shouldRestoreFocusRef.current = true;
-                  userManuallyBlurredRef.current = false;
-                  captureSel();
-                }}
-                onScroll={onTextareaScroll}
-                onFocus={onContentFocus}
-                onClick={captureSel}
-                onKeyUp={captureSel}
-                onBlur={onBlur}
-              />
+              <div className="flex-1 h-full overflow-auto custom-scroll">
+                <textarea
+                  ref={textareaRef}
+                  className="editor-textarea"
+                  value={content}
+                  placeholder="输入 Markdown 内容 (支持粘贴 / 拖拽图片)"
+                  disabled={disabledByCreation}
+                  wrap="off"
+                  onChange={e => {
+                    setContent(e.target.value);
+                    shouldRestoreFocusRef.current = true;
+                    userManuallyBlurredRef.current = false;
+                    captureSel();
+                  }}
+                  onScroll={onTextareaScroll}
+                  onFocus={onContentFocus}
+                  onClick={captureSel}
+                  onKeyUp={captureSel}
+                  onBlur={onBlur}
+                />
+              </div>
             </div>
           </div>
         </div>
