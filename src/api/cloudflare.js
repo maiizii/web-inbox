@@ -1,33 +1,19 @@
-// 统一 API 客户端（适配后端）
-// 扩展：注册时支持 inviteCode
-
 import { apiFetch } from "../lib/apiClient.js";
 
-const DEBUG_API = false;
-
-/* ============== Normalizers ============== */
-function normalizeListResponse(r) {
+function normList(r) {
   if (!r) return [];
   if (Array.isArray(r)) return r;
   if (Array.isArray(r.blocks)) return r.blocks;
-  if (Array.isArray(r.data)) return r.data;
-  if (Array.isArray(r.items)) return r.items;
   return [];
 }
-
-function normalizeBlock(r) {
+function normBlock(r) {
   if (!r) return null;
-  if (r.block && typeof r.block === "object") {
-    const b = r.block;
-    if (b.id) return b;
-  }
-  if (r.id && (r.content !== undefined || r.text !== undefined || r.body !== undefined)) {
-    return r;
-  }
+  if (r.block) return r.block;
+  if (r.id && "content" in r) return r;
   return null;
 }
 
-/* ============== Auth ============== */
+/* Auth */
 export async function apiRegister(email, password, name, inviteCode) {
   return apiFetch("/api/auth/register", {
     method: "POST",
@@ -52,57 +38,41 @@ export async function apiHealth() {
   return apiFetch("/api/health");
 }
 
-/* ============== Blocks ============== */
+/* Blocks */
 export async function apiListBlocks() {
   const raw = await apiFetch("/api/blocks");
-  const list = normalizeListResponse(raw);
-  if (DEBUG_API) console.log("[apiListBlocks] raw=", raw, "normalized=", list);
-  return list;
+  return normList(raw);
 }
-
-// Adaptive create (kept from earlier, but can simplify since backend fixed)
-async function apiCreateRaw(payload) {
+export async function apiCreateBlock(content = "") {
   const raw = await apiFetch("/api/blocks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ content: content || "" })
   });
-  return raw;
-}
-
-export async function apiCreateBlock(content, title) {
-  // Title ignored by backend currently (no title column) – we just send content
-  // Keep placeholder logic
-  const normalized = (content && content.trim()) ? content : "";
-  const resp = await apiCreateRaw({ content: normalized });
-  const b = normalizeBlock(resp);
+  const b = normBlock(raw);
   if (!b) throw new Error("创建失败");
   return b;
 }
-
-export async function apiUpdateBlock(id, payload) {
-  // Backend only accepts {content}; we keep 'title' optimistic in front-end only
-  const body = { content: payload.content ?? "" };
+export async function apiUpdateBlock(id, { content }) {
   const raw = await apiFetch(`/api/blocks/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ content: content ?? "" })
   });
-  const block = normalizeBlock(raw);
-  if (!block) throw new Error("更新失败");
-  return block;
+  const b = normBlock(raw);
+  if (!b) throw new Error("更新失败");
+  return b;
 }
-
 export async function apiDeleteBlock(id) {
   return apiFetch(`/api/blocks/${id}`, { method: "DELETE" });
 }
 
-/* ============== Images ============== */
+/* Images */
 export async function apiUploadImage(file) {
   const fd = new FormData();
   fd.append("file", file);
   const raw = await apiFetch("/api/images", { method: "POST", body: fd });
-  if (raw && raw.image && raw.image.url) return raw.image;
-  if (raw && raw.url) return { url: raw.url };
-  throw new Error("Image upload response invalid");
+  if (raw?.image?.url) return raw.image;
+  if (raw?.url) return { url: raw.url };
+  throw new Error("图片上传响应无效");
 }
