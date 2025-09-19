@@ -783,3 +783,16 @@ a:hover { color: var(--color-primary-hover); }
   background: var(--color-surface-alt);
 }
 .editor-textarea:focus { outline: none; }
+
+/* 拖动时禁止文本选择 */
+body.editor-resizing, 
+body.editor-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.editor-resizing.split-horizontal-mode,
+body.editor-resizing.split-horizontal-mode * {
+  cursor: row-resize !important;
+}
+
+/* 如果想区分上下模式，可以在 JS 中额外为 body 添加 split-horizontal-mode class */
