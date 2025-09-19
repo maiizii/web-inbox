@@ -9,6 +9,8 @@ import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
 
+const DEBUG_SELECTION = false;
+
 export default function InboxPage() {
   const toast = useToast();
   const [blocks, setBlocks] = useState([]);
@@ -24,7 +26,7 @@ export default function InboxPage() {
         const list = await apiListBlocks();
         if (!cancelled) {
           setBlocks(list);
-          if (list.length) setSelectedId(list[list.length - 1].id);
+          if (list.length) setSelectedId(prev => prev || list[list.length - 1].id);
         }
       } catch (e) {
         toast.push(e.message || "加载失败", { type: "error" });
@@ -34,6 +36,10 @@ export default function InboxPage() {
     })();
     return () => { cancelled = true; };
   }, [toast]);
+
+  useEffect(() => {
+    if (DEBUG_SELECTION) console.log("[sel] selectedId =", selectedId);
+  }, [selectedId]);
 
   const selected = useMemo(
     () => blocks.find(b => b.id === selectedId) || null,
@@ -46,7 +52,8 @@ export default function InboxPage() {
 
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
-    setBlocks(prev => prev.map(b => (b.id === id ? real : b)));
+    // 合并，保留 created_at 等旧字段
+    setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
     return real;
   }
 
@@ -63,7 +70,7 @@ export default function InboxPage() {
     setSelectedId(optimistic.id);
     try {
       const real = await apiCreateBlock("", "");
-      setBlocks(prev => prev.map(b => (b.id === optimistic.id ? real : b)));
+      setBlocks(prev => prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b)));
       setSelectedId(real.id);
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
@@ -97,7 +104,7 @@ export default function InboxPage() {
     return blocks.filter(b =>
       (b.title || "").toLowerCase().includes(kw) ||
       (b.content || "").toLowerCase().includes(kw) ||
-      (Object.values(b).some(v => typeof v === "string" && v.toLowerCase().includes(kw)))
+      Object.values(b).some(v => typeof v === "string" && v.toLowerCase().includes(kw))
     );
   }, [blocks, q]);
 
@@ -106,7 +113,10 @@ export default function InboxPage() {
       <Sidebar
         blocks={filteredBlocks}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={id => {
+          if (DEBUG_SELECTION) console.log("[sel] user select", id);
+          setSelectedId(id);
+        }}
         onCreate={createEmptyBlock}
       />
       <main className="flex-1 flex flex-col">
