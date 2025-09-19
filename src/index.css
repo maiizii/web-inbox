@@ -684,25 +684,19 @@ a:hover { color: var(--color-primary-hover); }
 /* 省略：保持你上一版统一现代风格的全部内容（请替换为当前最新版） */
 /* === 下面只展示需要新增/确认存在的 Split divider 样式，可合并到你的 index.css === */
 
-/* 分割条 */
+/* === 分割条（如未添加或需覆盖） === */
 .split-divider {
   position: relative;
   flex: 0 0 auto;
   background: linear-gradient(180deg,#e2e8f0,#cbd5e1);
   transition: background 120ms ease;
-  z-index: 20;
+  z-index: 30;
 }
 .dark .split-divider {
   background: linear-gradient(180deg,#334155,#1e293b);
 }
-.split-vertical {
-  width: 6px;
-  cursor: col-resize;
-}
-.split-horizontal {
-  height: 6px;
-  cursor: row-resize;
-}
+.split-vertical { width: 6px; cursor: col-resize; }
+.split-horizontal { height: 6px; cursor: row-resize; }
 .split-divider::after {
   content:"";
   position:absolute;
@@ -712,9 +706,80 @@ a:hover { color: var(--color-primary-hover); }
 }
 .split-divider:hover::after,
 .split-divider.dragging::after {
-  background: rgba(99,102,241,0.15);
+  background: rgba(99,102,241,0.18);
 }
 .dark .split-divider:hover::after,
 .dark .split-divider.dragging::after {
   background: rgba(99,102,241,0.30);
 }
+
+/* === 预览纯文本区域基础（可调色） === */
+.preview-plain {
+  background: var(--color-surface);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  border-left: 1px solid var(--color-border);
+}
+.dark .preview-plain {
+  background: var(--color-surface-alt);
+  border-color: var(--color-border);
+}
+
+/* === 行号 & 编辑器（保证对齐） === */
+.editor-line-numbers {
+  position: relative;
+  padding: 8px 8px 8px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-family: var(--mono);
+  color: #94a3b8;
+  text-align: right;
+  user-select: none;
+  min-width: 3.1rem;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.dark .editor-line-numbers {
+  background: var(--color-surface-alt);
+  color: #64748b;
+}
+.editor-line-numbers-inner {
+  position: absolute;
+  top: 8px; /* 与 padding-top 一致，JS 会再同步一次 */
+  left: 0;
+  right: 0;
+  white-space: pre;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  font-size: 13px;
+  font-family: var(--mono);
+  transform: translateY(0);
+  will-change: transform;
+}
+
+.editor-textarea {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 16px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: none;
+  outline: none;
+  resize: none;
+  min-height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  tab-size: 2;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  caret-color: var(--color-primary);
+}
+.dark .editor-textarea {
+  background: var(--color-surface-alt);
+}
+.editor-textarea:focus { outline: none; }
