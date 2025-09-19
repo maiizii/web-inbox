@@ -3,13 +3,14 @@
 // Improvements:
 //  - PBKDF2 iterations configurable via env.PBKDF2_ITER (capped <= 100000)
 //  - Proper HttpError status propagation
-//  - Allow empty string block content (only missing field is invalid)
-//  - updateBlock returns created_at to avoid front-end resorting issues
+//  - Allow empty string block content (only missing field invalid)
+//  - updateBlock returns created_at
+//  - Registration requires inviteCode = env.INVITE_CODE || "WebtipS"
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 const SESSION_COOKIE = "sid";
 
-/* ============ Utils / Common ============ */
+/* ============ Common Utils ============ */
 function json(obj, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -92,12 +93,10 @@ async function handleApi(request, env) {
   const { pathname } = url;
   const method = request.method.toUpperCase();
 
-  // Health
   if (pathname === "/api/health" && method === "GET") {
     return json({ ok: true, ts: Date.now() });
   }
 
-  // Session & user
   const session = await getSessionFromRequest(request, env);
   const user = session ? await getUserById(env, session.userId) : null;
 
@@ -146,8 +145,13 @@ async function handleApi(request, env) {
 
 /* ============ Auth ============ */
 async function register(request, env) {
-  const { email, password, name } = await parseJson(request);
+  const { email, password, name, inviteCode } = await parseJson(request);
   if (!email || !password) throw new HttpError(400, "缺少 email 或 password");
+
+  const REQUIRED_CODE = env.INVITE_CODE || "WebtipS";
+  if (!inviteCode || inviteCode !== REQUIRED_CODE) {
+    throw new HttpError(400, "邀请码无效");
+  }
 
   const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?")
     .bind(email).first();
