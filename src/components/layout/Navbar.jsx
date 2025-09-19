@@ -28,29 +28,29 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           <button
             onClick={testHealth}
-            className="btn-outline-sm"
+            className="btn-outline-modern !px-3 !py-2"
             title="测试后端"
           >
             <RefreshCw size={16} />
           </button>
           <button
             onClick={toggleTheme}
-            className="btn-outline-sm"
+            className="btn-outline-modern !px-3 !py-2"
             title="切换主题"
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[140px]">
+          <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[150px]">
             {user?.email}
           </span>
           <button
             onClick={logout}
-            className="btn-danger-sm"
+            className="btn-danger-modern !px-3 !py-2"
             title="退出登录"
           >
-            <LogOut size={14} />
+            <LogOut size={16} />
           </button>
         </div>
       </div>
