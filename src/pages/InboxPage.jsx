@@ -10,31 +10,20 @@ import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
 
-const SORT_CYCLE = ["position", "created", "updated"];
-
 export default function InboxPage() {
   const toast = useToast();
   const [blocks, setBlocks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [sortMode, setSortMode] = useState(
-    () => localStorage.getItem("sortMode") || "position"
-  );
   const [draggingId, setDraggingId] = useState(null);
 
-  useEffect(() => {
-    localStorage.setItem("sortMode", sortMode);
-  }, [sortMode]);
-
-  async function loadBlocks(mode = sortMode) {
+  async function loadBlocks() {
     try {
       setLoading(true);
-      const list = await apiListBlocks(mode);
+      const list = await apiListBlocks();
       setBlocks(list);
-      if (!selectedId && list.length) {
-        setSelectedId(list[0].id);
-      }
+      if (!selectedId && list.length) setSelectedId(list[0].id);
     } catch (e) {
       toast.push(e.message || "加载失败", { type: "error" });
     } finally {
@@ -42,16 +31,12 @@ export default function InboxPage() {
     }
   }
 
-  useEffect(() => {
-    loadBlocks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortMode]);
+  useEffect(() => { loadBlocks(); }, []); // eslint-disable-line
 
   const filteredBlocks = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return blocks;
     return blocks.filter(b =>
-      (b.title || "").toLowerCase().includes(kw) ||
       (b.content || "").toLowerCase().includes(kw)
     );
   }, [blocks, q]);
@@ -80,7 +65,8 @@ export default function InboxPage() {
       position: (blocks[blocks.length - 1]?.position || blocks.length) + 1,
       optimistic: true
     };
-    setBlocks(prev => [optimistic, ...prev]); // 新建置顶更直观
+    // 新建后放在顶部视觉上更快定位用户
+    setBlocks(prev => [optimistic, ...prev]);
     setSelectedId(optimistic.id);
     try {
       const real = await apiCreateBlock("");
@@ -110,19 +96,11 @@ export default function InboxPage() {
     }
   }
 
-  function nextSort() {
-    const idx = SORT_CYCLE.indexOf(sortMode);
-    const next = SORT_CYCLE[(idx + 1) % SORT_CYCLE.length];
-    setSortMode(next);
-  }
-
-  // 拖拽（仅 position 模式允许）
+  // 拖拽处理
   function onDragStart(id) {
-    if (sortMode !== "position") return;
     setDraggingId(id);
   }
   function onDragOver(e, overId) {
-    if (sortMode !== "position") return;
     e.preventDefault();
     if (!draggingId || draggingId === overId) return;
     setBlocks(prev => {
@@ -136,13 +114,12 @@ export default function InboxPage() {
     });
   }
   async function onDrop() {
-    if (sortMode !== "position" || !draggingId) return;
+    if (!draggingId) return;
     const order = blocks.map((b, i) => ({ id: b.id, position: i + 1 }));
     try {
       await apiReorderBlocks(order);
       toast.push("顺序已保存", { type: "success" });
-      // 重新拉取确保一致
-      loadBlocks("position");
+      await loadBlocks();
     } catch (e) {
       toast.push(e.message || "保存顺序失败", { type: "error" });
     } finally {
@@ -157,15 +134,12 @@ export default function InboxPage() {
         selectedId={selectedId}
         onSelect={setSelectedId}
         onCreate={createEmptyBlock}
-        sortMode={sortMode}
-        onCycleSort={nextSort}
         query={q}
         onQueryChange={setQ}
         draggingId={draggingId}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        manualMode={sortMode === "position"}
       />
       <div className="flex-1 min-h-0">
         <BlockEditorAuto
