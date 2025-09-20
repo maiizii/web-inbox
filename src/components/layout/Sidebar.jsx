@@ -14,37 +14,36 @@ export default function Sidebar({
   onDrop
 }) {
   return (
-    <aside className="w-72 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col rounded-lg overflow-hidden">
-      {/* 顶部操作栏 */}
-      <div className="p-2 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700">
-        <button
-          onClick={onCreate}
-          className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-        >
-          <Plus size={16} />
+   <aside className="w-72 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col rounded-lg">
+  <div className="p-2 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700">
+    <button
+      onClick={onCreate}
+      className="flex items-center gap-1 !px-3 !py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+    >
+      <Plus size={16} />
           新建
-        </button>
-        <div className="text-[11px] text-slate-500 dark:text-slate-400 ml-auto">
-          可拖拽排序
-        </div>
-      </div>
+         </button>
+    <div className="text-[11px] text-slate-500 dark:text-slate-400 ml-auto">
+      可拖拽排序
+    </div>
+  </div>
 
       {/* 搜索框 */}
-      <div className="px-3 pt-1 pb-2">
-        <input
-          className="w-full px-2 py-1 text-sm rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="搜索..."
-          value={query}
-          onChange={e => onQueryChange(e.target.value)}
-        />
-      </div>
+ <div className="px-3 pt-2 pb-2">
+    <input
+      className="w-full px-2 py-1 text-sm rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      placeholder="搜索..."
+      value={query}
+      onChange={e => onQueryChange(e.target.value)}
+    />
+  </div>
 
       {/* 内容列表 */}
-      <div
-        className="flex-1 overflow-auto custom-scroll px-2 pb-2 mt-1"
-        onDragOver={e => e.preventDefault()}
-        onDrop={onDrop}
-      >
+  <div
+    className="flex-1 overflow-auto custom-scroll px-2 pb-4 mt-2 bg-white dark:bg-slate-800"
+    onDragOver={e => e.preventDefault()}
+    onDrop={onDrop}
+  >
         {blocks.map(b => {
           const firstLine = (b.content || "").split("\n")[0] || "(空)";
           const derivedTitle = firstLine.slice(0, 64) || "(空)";
