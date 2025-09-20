@@ -1,4 +1,3 @@
-// src/components/layout/Navbar.jsx
 import React from "react";
 import { RefreshCw, LogOut, Moon, Sun } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -12,23 +11,51 @@ export default function Navbar() {
   const toast = useToast();
 
   async function testHealth() {
-    try { const r = await apiHealth(); toast.push("后端正常: " + (r.ts || ""), { type: "success" }); }
-    catch (e) { toast.push(e.message || "后端异常", { type: "error" }); }
+    try {
+      const r = await apiHealth();
+      toast.push("后端正常: " + (r.ts || ""), { type: "success" });
+    } catch (e) {
+      toast.push(e.message || "后端异常", { type: "error" });
+    }
   }
 
   return (
-    <header className="app-surface border-b border-slate-200 dark:border-slate-700 sticky top-0 z-40">
+    <header className="app-surface border-b border-slate-200 dark:border-slate-700 shadow-sm">
       <div className="w-full px-4 md:px-6 h-14 flex items-center gap-4">
-        <img src="https://img.686656.xyz/images/i/2025/09/20/68ceb0f8dcda7.png" alt="Web Tips" className="h-full w-auto select-none object-contain" />
+        <img
+          src="https://img.686656.xyz/images/i/2025/09/20/68ceb0f8dcda7.png"
+          alt="Web Tips"
+          className="h-full w-auto select-none object-contain"
+        />
+
         <div className="flex items-center gap-2">
-          <button onClick={testHealth} className="btn-outline-modern px-3 py-2 rounded-md" title="测试后端"><RefreshCw size={16}/></button>
-          <button onClick={toggleTheme} className="btn-outline-modern px-3 py-2 rounded-md" title="切换主题">
-            {theme === "dark" ? <Sun size={16}/> : <Moon size={16}/>}
+          <button
+            onClick={testHealth}
+            className="btn-outline-modern px-3 py-2 rounded-md"
+            title="测试后端"
+          >
+            <RefreshCw size={16} />
+          </button>
+          <button
+            onClick={toggleTheme}
+            className="btn-outline-modern px-3 py-2 rounded-md"
+            title="切换主题"
+          >
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
+
         <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-slate-500 dark:text-slate-300 truncate max-w-[160px]">{user?.email}</span>
-          <button onClick={logout} className="btn-danger-modern px-3 py-2 rounded-md" title="退出登录"><LogOut size={16}/></button>
+          <span className="text-xs text-slate-500 dark:text-slate-300 truncate max-w-[150px]">
+            {user?.email}
+          </span>
+          <button
+            onClick={logout}
+            className="btn-danger-modern px-3 py-2 rounded-md"
+            title="退出登录"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
     </header>
