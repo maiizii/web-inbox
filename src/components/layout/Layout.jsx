@@ -8,13 +8,13 @@ export default function Layout({ children, fullScreen = false }) {
       <main
         className={`flex-1 flex flex-col ${
           fullScreen
-            ? "p-4 md:p-6"
-            : "max-w-6xl w-full mx-auto px-4 py-3 bg-white dark:bg-slate-800 shadow-card rounded-xl-2" // py-6 -> py-3 缩小间隙
+            ? "p-2 md:p-3" // 页头间隙缩小一半
+            : "max-w-6xl w-full mx-auto px-4 py-3 bg-white dark:bg-slate-800 shadow-card rounded-xl-2"
         }`}
       >
         {children}
       </main>
-      <footer className="py-2 text-center text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200/60 dark:border-slate-700/50">
+      <footer className="py-1 text-center text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200/60 dark:border-slate-700/50">
         Web Tips · Powered by Cloudflare Pages + D1 + KV
       </footer>
     </div>
