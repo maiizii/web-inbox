@@ -50,7 +50,7 @@ export default function AuthPage() {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
            <h1 className="h-14 mx-auto">
-           <img src="https://img.686656.xyz/images/i/2025/09/20/68cea8557250f.png" alt="Web Tips" className="h-full object-contain"/>
+           <img src="https://img.686656.xyz/images/i/2025/09/20/68ceb0f8dcda7.png" alt="Web Tips" className="h-full object-contain"/>
            </h1>
 
           <p className="text-sm text-slate-500 dark:text-slate-400">
