@@ -14,11 +14,12 @@ export default function Sidebar({
   onDrop
 }) {
   return (
-    <aside className="w-72 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 backdrop-blur-md flex flex-col rounded-lg">
+    <aside className="w-72 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col rounded-lg overflow-hidden">
+      {/* 顶部操作栏 */}
       <div className="p-2 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700">
         <button
           onClick={onCreate}
-          className="flex items-center gap-1 !px-3 !py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+          className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
         >
           <Plus size={16} />
           新建
@@ -27,16 +28,20 @@ export default function Sidebar({
           可拖拽排序
         </div>
       </div>
-      <div className="px-3 pt-2 pb-2">
+
+      {/* 搜索框 */}
+      <div className="px-3 pt-1 pb-2">
         <input
-          className="w-full px-2 py-1 text-sm rounded-md border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 text-gray-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full px-2 py-1 text-sm rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="搜索..."
           value={query}
           onChange={e => onQueryChange(e.target.value)}
         />
       </div>
+
+      {/* 内容列表 */}
       <div
-        className="flex-1 overflow-auto custom-scroll px-2 pb-4 mt-2"
+        className="flex-1 overflow-auto custom-scroll px-2 pb-2 mt-1"
         onDragOver={e => e.preventDefault()}
         onDrop={onDrop}
       >
@@ -48,6 +53,7 @@ export default function Sidebar({
           const lastEdit = (b.updated_at || b.created_at || "")
             .replace("T", " ")
             .slice(5, 16);
+
           return (
             <div
               key={b.id}
@@ -57,7 +63,7 @@ export default function Sidebar({
               className={`group rounded-lg mb-1 border text-left relative transition-all cursor-pointer
                 ${isSel
                   ? "bg-gradient-to-r from-indigo-500/90 to-blue-500/90 text-white border-transparent shadow-lg"
-                  : "bg-white/70 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200/70 dark:border-slate-700/60"
+                  : "bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200/70 dark:border-slate-700/60"
                 }
                 ${isDragging ? "opacity-60 ring-2 ring-indigo-400" : ""}
               `}
@@ -67,9 +73,7 @@ export default function Sidebar({
                 <div className="font-medium truncate text-sm">
                   {derivedTitle}
                 </div>
-                <div className={`text-[10px] mt-1 ${
-                  isSel ? "text-white/80" : "text-slate-400 dark:text-slate-500"
-                }`}>
+                <div className={`text-[10px] mt-1 ${isSel ? "text-white/80" : "text-slate-400 dark:text-slate-300"}`}>
                   最后编辑：{lastEdit}
                 </div>
               </div>
@@ -77,7 +81,7 @@ export default function Sidebar({
           );
         })}
         {!blocks.length && (
-          <div className="text-xs text-slate-400 px-3 py-6 text-center">
+          <div className="text-xs text-slate-400 dark:text-slate-500 px-3 py-6 text-center">
             暂无内容
           </div>
         )}
