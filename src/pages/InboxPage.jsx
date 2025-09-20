@@ -10,6 +10,25 @@ import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
 
+// 工具函数：把刚编辑的 block（如果确实是最新编辑）置顶，其余顺序不变
+function sortBlocksWithLatestOnTop(blocks, latestBlockId) {
+  if (!latestBlockId) return blocks;
+  const latestBlock = blocks.find(b => b.id === latestBlockId);
+  if (!latestBlock) return blocks;
+  // 找到最新编辑的时间
+  const latestEditTime = Math.max(
+    ...blocks.map(b =>
+      new Date(b.updated_at || b.created_at || "1970-01-01").getTime()
+    )
+  );
+  const blockEditTime = new Date(latestBlock.updated_at || latestBlock.created_at || "1970-01-01").getTime();
+  if (blockEditTime === latestEditTime) {
+    const rest = blocks.filter(b => b.id !== latestBlockId);
+    return [latestBlock, ...rest];
+  }
+  return blocks;
+}
+
 export default function InboxPage() {
   const toast = useToast();
   const [blocks, setBlocks] = useState([]);
@@ -17,6 +36,9 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [draggingId, setDraggingId] = useState(null);
+
+  // 记录刚刚编辑的 block id
+  const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
 
   async function loadBlocks() {
     try {
@@ -33,6 +55,7 @@ export default function InboxPage() {
 
   useEffect(() => { loadBlocks(); }, []); // eslint-disable-line
 
+  // 搜索过滤
   const filteredBlocks = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return blocks;
@@ -40,6 +63,11 @@ export default function InboxPage() {
       (b.content || "").toLowerCase().includes(kw)
     );
   }, [blocks, q]);
+
+  // 排序：仅在有 lastEditedBlockId 时，将其置顶
+  const sortedBlocks = useMemo(() => {
+    return sortBlocksWithLatestOnTop(filteredBlocks, lastEditedBlockId);
+  }, [filteredBlocks, lastEditedBlockId]);
 
   const selected = useMemo(
     () => blocks.find(b => b.id === selectedId) || null,
@@ -50,9 +78,11 @@ export default function InboxPage() {
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)));
   }
 
+  // 关键：保存后，记录刚编辑的 block id，用于排序
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
+    setLastEditedBlockId(id);  // 标记刚编辑的 block
     return real;
   }
 
@@ -65,7 +95,6 @@ export default function InboxPage() {
       position: (blocks[blocks.length - 1]?.position || blocks.length) + 1,
       optimistic: true
     };
-    // 新建后放在顶部视觉上更快定位用户
     setBlocks(prev => [optimistic, ...prev]);
     setSelectedId(optimistic.id);
     try {
@@ -74,6 +103,7 @@ export default function InboxPage() {
         prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
       );
       setSelectedId(real.id);
+      setLastEditedBlockId(real.id); // 新建后也置顶
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
@@ -90,6 +120,7 @@ export default function InboxPage() {
         const remain = snapshot.filter(b => b.id !== id);
         setSelectedId(remain.length ? remain[0].id : null);
       }
+      if (lastEditedBlockId === id) setLastEditedBlockId(null);
     } catch (e) {
       toast.push(e.message || "删除失败", { type: "error" });
       setBlocks(snapshot);
@@ -130,7 +161,7 @@ export default function InboxPage() {
   return (
     <div className="flex flex-1 overflow-hidden">
       <Sidebar
-        blocks={filteredBlocks}
+        blocks={sortedBlocks}
         selectedId={selectedId}
         onSelect={setSelectedId}
         onCreate={createEmptyBlock}
