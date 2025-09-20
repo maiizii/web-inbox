@@ -12,7 +12,7 @@ export default function AuthPage() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { refreshUser } = useAuth();
+  const { refreshUser, user } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -28,15 +28,12 @@ export default function AuthPage() {
       } else {
         await apiLogin(email, password);
       }
-
-      // 刷新用户信息
-      const newUser = await refreshUser();
-
-      if (newUser) {
-        navigate("/", { replace: true });
-      } else {
-        throw new Error("用户信息获取失败");
-      }
+      await refreshUser();
+      setTimeout(() => {
+        if (user || true) {
+          navigate("/", { replace: true });
+        }
+      }, 50);
     } catch (err) {
       setError(err.message || "登录失败");
       toast.push(err.message || "失败", { type: "error" });
@@ -49,14 +46,19 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
-           <h1 className="h-14 mx-auto">
-           <img src="https://img.686656.xyz/images/i/2025/09/20/68ceb0f8dcda7.png" alt="Web Tips" className="h-full object-contain"/>
-           </h1>
-
+          {/* Logo 替换文字，放大显示 */}
+          <h1 className="mx-auto h-24">
+            <img
+              src="https://img.686656.xyz/images/i/2025/09/20/68cea8557250f.png"
+              alt="Web Tips"
+              className="h-full object-contain mx-auto"
+            />
+          </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {mode === "login" ? "登录到你的知识小片段" : "创建你的账号（需要邀请码）"}
           </p>
         </div>
+
         <div className="flex bg-slate-100 dark:bg-slate-800 rounded-md p-1">
           <button
             onClick={() => setMode("login")}
@@ -95,6 +97,7 @@ export default function AuthPage() {
               onChange={e => setEmail(e.target.value.trim())}
             />
           </div>
+
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">密码</label>
             <input
@@ -106,9 +109,16 @@ export default function AuthPage() {
               onChange={e => setPassword(e.target.value)}
             />
           </div>
+
           {mode === "register" && (
             <>
-              
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">昵称（可选）</label>
+                <input
+                  className="input-modern"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-500 dark:text-slate-400">邀请码</label>
@@ -122,11 +132,13 @@ export default function AuthPage() {
               </div>
             </>
           )}
+
           {error && (
             <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/30 p-2 rounded">
               {error}
             </div>
           )}
+
           <button
             disabled={loading}
             className="btn-primary-modern w-full"
