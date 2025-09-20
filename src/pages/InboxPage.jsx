@@ -1,3 +1,4 @@
+// src/pages/InboxPage.jsx
 import React, { useEffect, useState, useMemo } from "react";
 import {
   apiListBlocks,
@@ -14,11 +15,7 @@ function sortBlocksWithLatestOnTop(blocks, latestBlockId) {
   if (!latestBlockId) return blocks;
   const latestBlock = blocks.find(b => b.id === latestBlockId);
   if (!latestBlock) return blocks;
-  const latestEditTime = Math.max(
-    ...blocks.map(b =>
-      new Date(b.updated_at || b.created_at || "1970-01-01").getTime()
-    )
-  );
+  const latestEditTime = Math.max(...blocks.map(b => new Date(b.updated_at || b.created_at || "1970-01-01").getTime()));
   const blockEditTime = new Date(latestBlock.updated_at || latestBlock.created_at || "1970-01-01").getTime();
   if (blockEditTime === latestEditTime) {
     const rest = blocks.filter(b => b.id !== latestBlockId);
@@ -56,27 +53,20 @@ export default function InboxPage() {
   const filteredBlocks = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return blocks;
-    return blocks.filter(b =>
-      (b.content || "").toLowerCase().includes(kw)
-    );
+    return blocks.filter(b => (b.content || "").toLowerCase().includes(kw));
   }, [blocks, q]);
 
   const sortedBlocks = useMemo(() => {
     let list = filteredBlocks;
     if (manualOrder && manualOrder.length === list.length) {
-      list = manualOrder
-        .map(id => list.find(b => b.id === id))
-        .filter(Boolean);
+      list = manualOrder.map(id => list.find(b => b.id === id)).filter(Boolean);
     } else if (lastEditedBlockId) {
       list = sortBlocksWithLatestOnTop(list, lastEditedBlockId);
     }
     return list;
   }, [filteredBlocks, manualOrder, lastEditedBlockId]);
 
-  const selected = useMemo(
-    () => blocks.find(b => b.id === selectedId) || null,
-    [blocks, selectedId]
-  );
+  const selected = useMemo(() => blocks.find(b => b.id === selectedId) || null, [blocks, selectedId]);
 
   function optimisticChange(id, patch) {
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)));
@@ -113,9 +103,7 @@ export default function InboxPage() {
     setSelectedId(optimistic.id);
     try {
       const real = await apiCreateBlock("");
-      setBlocks(prev =>
-        prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
-      );
+      setBlocks(prev => prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b)));
       setSelectedId(real.id);
       setLastEditedBlockId(real.id);
       setManualOrder(null);
@@ -195,7 +183,6 @@ export default function InboxPage() {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        className="bg-white dark:bg-slate-800" // 左栏深色模式
       />
       <div className="flex-1 min-h-0 rounded-lg overflow-hidden bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-2">
         <BlockEditorAuto
