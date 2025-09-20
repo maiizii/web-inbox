@@ -10,23 +10,27 @@ import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
 
-// 排序工具函数：最新编辑的 block 置顶，其余顺序保持
-function sortBlocksWithLatestOnTop(blocks, latestBlockId) {
-  if (!latestBlockId) return blocks;
-  const latestBlock = blocks.find(b => b.id === latestBlockId);
-  if (!latestBlock) return blocks;
-  // 找到最新编辑的时间
-  const latestEditTime = Math.max(
-    ...blocks.map(b =>
-      new Date(b.updated_at || b.created_at || "1970-01-01").getTime()
-    )
-  );
-  const blockEditTime = new Date(latestBlock.updated_at || latestBlock.created_at || "1970-01-01").getTime();
-  if (blockEditTime === latestEditTime) {
-    const rest = blocks.filter(b => b.id !== latestBlockId);
-    return [latestBlock, ...rest];
+// 排序工具函数：置顶的 block 按编辑时间倒序，其余按手动排序或编辑时间倒序
+function sortBlocks(blocks, manualOrder) {
+  const pinned = blocks.filter(b => b.pinned)
+    .sort((a, b) => {
+      const ta = new Date(a.updated_at || a.created_at || "1970-01-01").getTime();
+      const tb = new Date(b.updated_at || b.created_at || "1970-01-01").getTime();
+      return tb - ta;
+    });
+  let others = blocks.filter(b => !b.pinned);
+  if (manualOrder && manualOrder.length === others.length) {
+    others = manualOrder
+      .map(id => others.find(b => b.id === id))
+      .filter(Boolean);
+  } else {
+    others = others.sort((a, b) => {
+      const ta = new Date(a.updated_at || a.created_at || "1970-01-01").getTime();
+      const tb = new Date(b.updated_at || b.created_at || "1970-01-01").getTime();
+      return tb - ta;
+    });
   }
-  return blocks;
+  return [...pinned, ...others];
 }
 
 export default function InboxPage() {
@@ -36,20 +40,14 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [draggingId, setDraggingId] = useState(null);
-
-  // 拖拽顺序（block id 数组）
   const [manualOrder, setManualOrder] = useState(null);
-  // 记录刚刚编辑的 block id
-  const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
 
-  // 加载 blocks 并重置排序
   async function loadBlocks() {
     try {
       setLoading(true);
       const list = await apiListBlocks();
       setBlocks(list);
       if (!selectedId && list.length) setSelectedId(list[0].id);
-      // 每次重新加载都重置拖拽顺序
       setManualOrder(null);
     } catch (e) {
       toast.push(e.message || "加载失败", { type: "error" });
@@ -69,20 +67,9 @@ export default function InboxPage() {
     );
   }, [blocks, q]);
 
-  // 排序逻辑：优先用拖拽顺序，否则最新编辑置顶
   const sortedBlocks = useMemo(() => {
-    let list = filteredBlocks;
-    if (manualOrder && manualOrder.length === list.length) {
-      // 按拖拽顺序
-      list = manualOrder
-        .map(id => list.find(b => b.id === id))
-        .filter(Boolean);
-    } else if (lastEditedBlockId) {
-      // 最新编辑置顶
-      list = sortBlocksWithLatestOnTop(list, lastEditedBlockId);
-    }
-    return list;
-  }, [filteredBlocks, manualOrder, lastEditedBlockId]);
+    return sortBlocks(filteredBlocks, manualOrder);
+  }, [filteredBlocks, manualOrder]);
 
   const selected = useMemo(
     () => blocks.find(b => b.id === selectedId) || null,
@@ -93,16 +80,14 @@ export default function InboxPage() {
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)));
   }
 
-  // 保存 block 内容时，最新编辑的 block 置顶，清除拖拽顺序
+  // 保存 block 内容时，刷新编辑时间
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
-    setLastEditedBlockId(id);  // 标记刚编辑的 block
-    setManualOrder(null);      // 清除手动顺序，进入最新编辑置顶模式
     return real;
   }
 
-  // 新建 block 时也置顶、清除拖拽顺序
+  // 新建 block
   async function createEmptyBlock() {
     const optimistic = {
       id: "tmp-" + Date.now(),
@@ -110,7 +95,8 @@ export default function InboxPage() {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       position: (blocks[blocks.length - 1]?.position || blocks.length) + 1,
-      optimistic: true
+      optimistic: true,
+      pinned: false
     };
     setBlocks(prev => [optimistic, ...prev]);
     setSelectedId(optimistic.id);
@@ -120,8 +106,6 @@ export default function InboxPage() {
         prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
       );
       setSelectedId(real.id);
-      setLastEditedBlockId(real.id); // 新建后也置顶
-      setManualOrder(null);          // 清除手动顺序，进入最新编辑置顶模式
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
@@ -138,7 +122,6 @@ export default function InboxPage() {
         const remain = snapshot.filter(b => b.id !== id);
         setSelectedId(remain.length ? remain[0].id : null);
       }
-      if (lastEditedBlockId === id) setLastEditedBlockId(null);
       if (manualOrder) setManualOrder(manualOrder.filter(i => i !== id));
     } catch (e) {
       toast.push(e.message || "删除失败", { type: "error" });
@@ -146,7 +129,7 @@ export default function InboxPage() {
     }
   }
 
-  // 拖拽处理：拖拽后顺序以拖拽为准，清除最新编辑置顶模式
+  // 拖拽排序，仅限未置顶的 block
   function onDragStart(id) {
     setDraggingId(id);
   }
@@ -154,21 +137,27 @@ export default function InboxPage() {
     e.preventDefault();
     if (!draggingId || draggingId === overId) return;
     setBlocks(prev => {
-      const list = [...prev];
-      const from = list.findIndex(b => b.id === draggingId);
-      const to = list.findIndex(b => b.id === overId);
+      // 只排序未置顶 block
+      const notPinned = prev.filter(b => !b.pinned);
+      const from = notPinned.findIndex(b => b.id === draggingId);
+      const to = notPinned.findIndex(b => b.id === overId);
       if (from === -1 || to === -1) return prev;
-      const [item] = list.splice(from, 1);
-      list.splice(to, 0, item);
-      // 更新拖拽顺序
-      setManualOrder(list.map(b => b.id));
-      setLastEditedBlockId(null); // 清除最新编辑置顶模式
-      return list;
+      const newNotPinned = [...notPinned];
+      const [item] = newNotPinned.splice(from, 1);
+      newNotPinned.splice(to, 0, item);
+
+      // 重新组合 pinned 和 notPinned
+      const pinned = prev.filter(b => b.pinned);
+      setManualOrder(newNotPinned.map(b => b.id));
+      return [...pinned, ...newNotPinned];
     });
   }
   async function onDrop() {
     if (!draggingId) return;
-    const order = blocks.map((b, i) => ({ id: b.id, position: i + 1 }));
+    // 只同步未置顶顺序
+    const order = sortedBlocks
+      .filter(b => !b.pinned)
+      .map((b, i) => ({ id: b.id, position: i + 1 }));
     try {
       await apiReorderBlocks(order);
       toast.push("顺序已保存", { type: "success" });
@@ -178,6 +167,16 @@ export default function InboxPage() {
     } finally {
       setDraggingId(null);
     }
+  }
+
+  // 置顶和取消置顶事件
+  function onPin(id) {
+    setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: true } : b));
+    setManualOrder(null); // 每次置顶/取消置顶后清除拖拽顺序，重新按置顶+时间排序
+  }
+  function onUnpin(id) {
+    setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: false } : b));
+    setManualOrder(null);
   }
 
   return (
@@ -193,6 +192,8 @@ export default function InboxPage() {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        onPin={onPin}
+        onUnpin={onUnpin}
       />
       <div className="flex-1 min-h-0">
         <BlockEditorAuto
