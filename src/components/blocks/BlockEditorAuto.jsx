@@ -1,4 +1,3 @@
-// src/components/blocks/BlockEditorAuto.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Undo2, Redo2 } from "lucide-react";
 import { apiUploadImage } from "../../api/cloudflare.js";
@@ -368,7 +367,10 @@ export default function BlockEditorAuto({
   return (
     <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
       <div className="flex items-center gap-3 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
-        <div className="flex-1 text-lg font-semibold truncate select-none">{derivedTitle}</div>
+        {/* 深色下标题强制白色 */}
+        <div className="flex-1 text-lg font-semibold truncate select-none text-slate-900 dark:text-white">
+          {derivedTitle}
+        </div>
         <div className="flex items-center gap-2 text-xs">
           <button type="button" onClick={() => restoreHistory(-1)} disabled={!canUndo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="撤销 (Ctrl+Z)"><Undo2 size={16} /></button>
           <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="恢复 (Ctrl+Y)"><Redo2 size={16} /></button>
@@ -377,12 +379,13 @@ export default function BlockEditorAuto({
             <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "上下预览" : "左右预览"}</button>
           </>}
           <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">{showPreview ? "隐藏预览" : "显示预览"}</button>
-          <div className="text-slate-400 dark:text-slate-500 select-none min-w-[64px] text-right">
+          <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
             {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
           </div>
           <button onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }} className="btn-danger-modern !px-3 !py-1.5">删除</button>
         </div>
       </div>
+
       <div ref={splitContainerRef} className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? previewMode === "vertical" ? "flex-row" : "flex-col" : "flex-col"} overflow-hidden`}>
         <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}>
           <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
@@ -412,7 +415,6 @@ export default function BlockEditorAuto({
           <div className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`} onMouseDown={startDividerDrag} onTouchStart={startDividerDrag} onDoubleClick={resetSplit} title="拖动调整比例，双击恢复 50%" />
           <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
             <div ref={previewScrollRef} className="preview-scroll custom-scroll">
-              {/* 预览正文颜色由全局 CSS 控制（深色下强制浅色 !important） */}
               <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
