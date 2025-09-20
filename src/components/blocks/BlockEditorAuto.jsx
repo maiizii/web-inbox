@@ -486,10 +486,11 @@ export default function BlockEditorAuto({
       const ratio = (clientX - rect.left) / rect.width;
       setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
     } else {
-      const ratio = (clientY - rect.top) / rect.height;
-      console.log('setSplitRatio', ratio); // 调试输出
-      setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
+    ratio = (clientY - rect.top) / rect.height;
     }
+    ratio = clamp(ratio, MIN_RATIO, MAX_RATIO);
+    console.log('setSplitRatio', ratio); // 调试输出
+    setSplitRatio(ratio);
   }
   function stopDividerDrag() {
     if (!draggingDivider) return;
