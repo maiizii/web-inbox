@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Pin, XCircle } from "lucide-react";
+import { Plus } from "lucide-react";
 
 export default function Sidebar({
   blocks,
@@ -11,9 +11,7 @@ export default function Sidebar({
   draggingId,
   onDragStart,
   onDragOver,
-  onDrop,
-  onPin,
-  onUnpin,
+  onDrop
 }) {
   return (
     <aside className="w-[15rem] shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 backdrop-blur flex flex-col">
@@ -32,7 +30,7 @@ export default function Sidebar({
       <div className="px-3 pt-3">
         <input
           className="input-modern w-full"
-          placeholder="搜索..."
+            placeholder="搜索..."
           value={query}
           onChange={e => onQueryChange(e.target.value)}
         />
@@ -48,7 +46,6 @@ export default function Sidebar({
           const isSel = b.id === selectedId;
           const isDragging = b.id === draggingId;
           const lastEdit = (b.updated_at || b.created_at || "").replace("T", " ").slice(5, 16);
-          const isPinned = !!b.pinned;
           return (
             <div
               key={b.id}
@@ -65,65 +62,15 @@ export default function Sidebar({
               `}
               onClick={() => onSelect && onSelect(b.id)}
             >
-              <div className="px-3 pt-2 pb-1 flex items-center gap-2">
-                <div className="font-medium truncate text-sm flex-1">
+              <div className="px-3 pt-2 pb-1">
+                <div className="font-medium truncate text-sm">
                   {derivedTitle}
                 </div>
-                <div className="flex gap-1 items-center">
-                  {!isPinned && (
-                    <button
-                      className="pin-btn group-hover:bg-slate-100"
-                      title="置顶"
-                      style={{
-                        padding: 0,
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                      onClick={e => { e.stopPropagation(); onPin && onPin(b.id); }}
-                    >
-                      <Pin
-                        size={16}
-                        strokeWidth={2}
-                        className="text-slate-300 group-hover:text-indigo-500 transition"
-                        style={{ opacity: 0.7 }}
-                      />
-                    </button>
-                  )}
-                  {isPinned && (
-                    <button
-                      className="pin-btn group-hover:bg-slate-100"
-                      title="取消置顶"
-                      style={{
-                        padding: 0,
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                      onClick={e => { e.stopPropagation(); onUnpin && onUnpin(b.id); }}
-                    >
-                      <XCircle
-                        size={16}
-                        strokeWidth={2}
-                        className="text-indigo-300 group-hover:text-indigo-500 transition"
-                        style={{ opacity: 0.8 }}
-                      />
-                    </button>
-                  )}
+                <div className={`text-[10px] mt-1 ${
+                  isSel ? "text-white/80" : "text-slate-400 dark:text-slate-500"
+                }`}>
+                  最后编辑：{lastEdit}
                 </div>
-              </div>
-              <div className={`text-[10px] mt-1 px-3 ${
-                isSel ? "text-white/80" : "text-slate-400 dark:text-slate-500"
-              }`}>
-                最后编辑：{lastEdit}
               </div>
             </div>
           );
@@ -134,17 +81,6 @@ export default function Sidebar({
           </div>
         )}
       </div>
-      <style>{`
-        .pin-btn {
-          transition: background 0.18s, box-shadow 0.18s;
-        }
-        .pin-btn:hover svg {
-          opacity: 1 !important;
-        }
-        .pin-btn:active {
-          box-shadow: 0 1px 3px rgba(99,102,241,0.18);
-        }
-      `}</style>
     </aside>
   );
 }
