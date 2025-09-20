@@ -9,7 +9,12 @@ import Layout from "./components/layout/Layout.jsx";
 
 function PrivateRoute({ children }) {
   const { user, loaded } = useAuth();
-  if (!loaded) return <div className="p-6 text-sm text-slate-500">加载中...</div>;
+  if (!loaded)
+    return (
+      <div className="p-6 text-sm text-slate-500 dark:text-slate-400">
+        加载中...
+      </div>
+    );
   if (!user) return <Navigate to="/auth" replace />;
   return children;
 }
