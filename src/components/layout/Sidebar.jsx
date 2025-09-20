@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Thumbtack, XCircle } from "lucide-react";
+import { Plus, Pin, XCircle } from "lucide-react";
 
 export default function Sidebar({
   blocks,
@@ -12,8 +12,8 @@ export default function Sidebar({
   onDragStart,
   onDragOver,
   onDrop,
-  onPin,          // 新增：置顶 block，参数是 block id
-  onUnpin,        // 新增：取消置顶 block，参数是 block id
+  onPin,
+  onUnpin,
 }) {
   return (
     <aside className="w-[15rem] shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 backdrop-blur flex flex-col">
@@ -48,7 +48,7 @@ export default function Sidebar({
           const isSel = b.id === selectedId;
           const isDragging = b.id === draggingId;
           const lastEdit = (b.updated_at || b.created_at || "").replace("T", " ").slice(5, 16);
-          const isPinned = !!b.pinned; // pinned 字段判断是否置顶
+          const isPinned = !!b.pinned;
           return (
             <div
               key={b.id}
@@ -76,7 +76,7 @@ export default function Sidebar({
                       title="置顶"
                       onClick={e => { e.stopPropagation(); onPin && onPin(b.id); }}
                     >
-                      <Thumbtack size={16} className="text-slate-500 hover:text-indigo-500" />
+                      <Pin size={16} className="text-slate-500 hover:text-indigo-500" />
                     </button>
                   )}
                   {isPinned && (
