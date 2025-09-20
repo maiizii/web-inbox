@@ -10,7 +10,6 @@ import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
 
-// 排序工具函数：最新编辑的 block 置顶，其余顺序保持
 function sortBlocksWithLatestOnTop(blocks, latestBlockId) {
   if (!latestBlockId) return blocks;
   const latestBlock = blocks.find(b => b.id === latestBlockId);
@@ -52,7 +51,7 @@ export default function InboxPage() {
     }
   }
 
-  useEffect(() => { loadBlocks(); }, []); // eslint-disable-line
+  useEffect(() => { loadBlocks(); }, []);
 
   const filteredBlocks = useMemo(() => {
     const kw = q.trim().toLowerCase();
@@ -153,9 +152,7 @@ export default function InboxPage() {
     }
   }
 
-  function onDragStart(id) {
-    setDraggingId(id);
-  }
+  function onDragStart(id) { setDraggingId(id); }
   function onDragOver(e, overId) {
     e.preventDefault();
     if (!draggingId || draggingId === overId) return;
@@ -186,7 +183,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
+    <div className="flex flex-1 overflow-hidden rounded-lg bg-transparent">
       <Sidebar
         blocks={sortedBlocks}
         selectedId={selectedId}
@@ -198,9 +195,8 @@ export default function InboxPage() {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        className="w-72 bg-white dark:bg-slate-800 border-r border-slate-200/60 dark:border-slate-700/50 shadow-md"
       />
-      <div className="flex-1 min-h-0 p-4 md:p-6 overflow-auto">
+      <div className="flex-1 min-h-0 rounded-lg overflow-hidden">
         <BlockEditorAuto
           block={selected}
           onChange={optimisticChange}
