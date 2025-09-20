@@ -468,7 +468,6 @@ export default function BlockEditorAuto({
     window.addEventListener("mouseup", stopDividerDrag);
     window.addEventListener("touchmove", onDividerMove, { passive: false });
     window.addEventListener("touchend", stopDividerDrag);
-    onMouseDown={e => {console.log('divider down'); startDividerDrag(e);}}
   }
   function onDividerMove(e) {
     if (!draggingDivider || !dividerDragRef.current) return;
