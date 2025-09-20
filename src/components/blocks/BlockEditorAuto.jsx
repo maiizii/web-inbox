@@ -1,3 +1,4 @@
+// src/components/blocks/BlockEditorAuto.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Undo2, Redo2 } from "lucide-react";
 import { apiUploadImage } from "../../api/cloudflare.js";
@@ -96,14 +97,14 @@ export default function BlockEditorAuto({
     if (!h || isRestoringHistoryRef.current) return;
     const now = Date.now(), since = now - h.lastPush;
     const lastSnap = h.stack[h.index];
-    if (!forceSeparate && since < HISTORY_GROUP_MS) {
+    if (!forceSeparate && since < 800) {
       if (lastSnap !== newContent) h.stack[h.index] = newContent;
       h.lastPush = now;
       return;
     }
     if (h.index < h.stack.length - 1) h.stack.splice(h.index + 1);
     h.stack.push(newContent);
-    if (h.stack.length > MAX_HISTORY) h.stack.shift();
+    if (h.stack.length > 200) h.stack.shift();
     else h.index++;
     h.lastPush = now;
   }
@@ -138,12 +139,11 @@ export default function BlockEditorAuto({
     ensureHistory(block?.id, init);
     updateLineNums(init);
     updatePreview(init);
-    userManuallyBlurredRef.current = false;
-    shouldRestoreFocusRef.current = false;
     requestAnimationFrame(() => { syncLineNumbersPadding(); detectOverflow(); });
   }, [block?.id]);
 
   useEffect(() => { updatePreview(content); }, [content]);
+
   useEffect(() => {
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
@@ -154,8 +154,8 @@ export default function BlockEditorAuto({
 
   function captureSel() { const ta = textareaRef.current; if (!ta) return; selectionRef.current = { start: ta.selectionStart, end: ta.selectionEnd }; }
   function restoreSel() { const ta = textareaRef.current; if (!ta) return; const { start, end } = selectionRef.current; if (start == null || end == null) return; try { ta.setSelectionRange(start, end); } catch {} }
-  function maybeRestoreFocus() { if (userManuallyBlurredRef.current || !shouldRestoreFocusRef.current) return; const ta = textareaRef.current; if (ta && document.activeElement !== ta) { ta.focus(); restoreSel(); } }
-  useEffect(() => { if (!block) return; requestAnimationFrame(maybeRestoreFocus); }, [block?.id]);
+  function onBlur() { flushSave(); }
+  function onContentFocus() {}
 
   async function doSave() {
     if (!block || block.optimistic || !dirty) return;
@@ -165,16 +165,17 @@ export default function BlockEditorAuto({
     try {
       onChange && onChange(block.id, { content });
       let real;
-      try { real = await onImmediateSave(block.id, payload); } 
+      try { real = await onImmediateSave(block.id, payload); }
       catch (err) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err); else throw err; }
       if (currentBlockIdRef.current === saveId) lastPersisted.current = { content };
-    } catch (err) { if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败"); }
-    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); requestAnimationFrame(maybeRestoreFocus); } }
+    } catch (err) {
+      if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败");
+    } finally {
+      if (currentBlockIdRef.current === saveId) { setSaving(false); }
+    }
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
-  function onBlur() { userManuallyBlurredRef.current = true; flushSave(); }
-  function onContentFocus() { userManuallyBlurredRef.current = false; shouldRestoreFocusRef.current = true; captureSel(); }
 
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
@@ -210,9 +211,10 @@ export default function BlockEditorAuto({
 
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
-    try { onChange && onChange(block.id, { content: newContent }); const payload = { content: newContent };
+    try {
+      onChange && onChange(block.id, { content: newContent });
       let real;
-      try { real = await onImmediateSave(block.id, payload); } catch (e) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, e); else throw e; }
+      try { real = await onImmediateSave(block.id, { content: newContent }); } catch (e) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, { content: newContent }, e); else throw e; }
       lastPersisted.current = { content: newContent };
       pushHistory(newContent, true);
     } catch (e) { toast.push(e.message || "图片保存失败", { type: "error" }); }
@@ -287,14 +289,14 @@ export default function BlockEditorAuto({
       const adjust = target.length - newTarget.length;
       const newSelEnd = end - adjust;
       setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(newSelStart, newSelEnd); captureSel(); });
+      requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(newSelStart, newSelEnd); });
     } else {
       const newLines = lines.length === 1 ? [INDENT + lines[0]] : lines.map(l => INDENT + l);
       const newTarget = newLines.join("\n");
       const newContent = before + newTarget + after;
       const delta = newLines.length * INDENT.length;
       setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); captureSel(); });
+      requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); });
     }
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
@@ -382,7 +384,8 @@ export default function BlockEditorAuto({
           <button onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }} className="btn-danger-modern !px-3 !py-1.5">删除</button>
         </div>
       </div>
-      <div ref={splitContainerRef} className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? previewMode === "vertical" ? "flex-row" : "flex-col" : "flex-col"} overflow-hidden`}>
+
+      <div ref={splitContainerRef} className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}>
         <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}>
           <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
             <div className="editor-inner">
@@ -395,23 +398,20 @@ export default function BlockEditorAuto({
                   disabled={disabledByCreation}
                   placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
                   wrap="off"
-                  onChange={e => { handleContentChange(e.target.value); shouldRestoreFocusRef.current = true; userManuallyBlurredRef.current = false; captureSel(); }}
-                  onFocus={onContentFocus}
-                  onBlur={onBlur}
-                  onClick={captureSel}
-                  onKeyUp={captureSel}
-                  onKeyDown={handleKeyDown}
+                  onChange={e => { handleContentChange(e.target.value); }}
                   style={{ overflow: "auto" }}
                 />
               </div>
             </div>
           </div>
         </div>
+
         {showPreview && <>
           <div className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`} onMouseDown={startDividerDrag} onTouchStart={startDividerDrag} onDoubleClick={resetSplit} title="拖动调整比例，双击恢复 50%" />
           <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
             <div ref={previewScrollRef} className="preview-scroll custom-scroll dark:bg-slate-900">
-              <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text dark:text-slate-300" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              {/* 关键：深色主题下预览文本改为浅色（原为 dark:text-slate-300） */}
+              <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text text-slate-800 dark:text-slate-100" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
         </>}
