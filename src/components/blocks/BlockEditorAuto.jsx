@@ -470,6 +470,7 @@ export default function BlockEditorAuto({
     window.addEventListener("touchend", stopDividerDrag);
   }
   function onDividerMove(e) {
+    console.log('onDividerMove', draggingDivider, dividerDragRef.current); // 调试输出
     if (!draggingDivider || !dividerDragRef.current) return;
     let clientX, clientY;
     if (e.touches && e.touches[0]) {
@@ -486,6 +487,7 @@ export default function BlockEditorAuto({
       setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
     } else {
       const ratio = (clientY - rect.top) / rect.height;
+      console.log('setSplitRatio', ratio); // 调试输出
       setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
     }
   }
