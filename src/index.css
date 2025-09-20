@@ -1,96 +1,138 @@
 /* ==========================================================================
-   NodeSeeker 仪表盘风格美化（只美化，不动原架构及功能）
+   Web Tips 统一现代风格全局样式 (Final Clean Version + NodeSeeker Dashboard Style)
+   完整版，直接替换，无需补充其它内容
    ========================================================================== */
 
 @import "tailwindcss";
 
-/* ----------- 全局基础 ----------- */
-html, body, #root {
-  height: 100%;
-  background: #f5f6fa;
-}
-body {
-  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Roboto","Oxygen","Ubuntu","Cantarell","Fira Sans","Droid Sans","Helvetica Neue",sans-serif;
-  color: #222;
-  font-size: 15px;
-  line-height: 1.65;
+/* ------------- 主题变量 ------------- */
+:root {
+  --color-bg: #f5f6fa;
+  --color-bg-alt: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f8fafc;
+  --color-surface-elevated: #ffffffcc;
+
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
+  --color-text: #21262b;
+  --color-text-soft: #475569;
+  --color-text-fade: #64748b;
+
+  --color-primary: #2563eb;
+  --color-primary-accent: #2563eb;
+  --color-primary-hover: #1742b7;
+  --color-primary-active: #1742b7;
+
+  --color-danger: #ee5858;
+  --color-danger-hover: #d93030;
+  --color-warning: #f5a623;
+  --color-success: #3ac569;
+
+  --focus-ring-rgb: 37 99 241;
+  --focus-danger-rgb: 220 38 38;
+
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 15px;
+  --radius-xl: 18px;
+  --radius-full: 999px;
+
+  --shadow-sm: 0 2px 4px -1px rgba(60,80,130,0.07), 0 0 0 1px rgba(0,0,0,0.02);
+  --shadow-md: 0 6px 22px -8px rgba(60,80,130,0.09), 0 1.5px 4px rgba(60,80,130,0.03);
+  --shadow-lg: 0 10px 30px -6px rgba(60,80,130,0.18), 0 4px 10px -2px rgba(0,0,0,0.14);
+
+  --ease-base: cubic-bezier(.4,0,.2,1);
+  --transition-fast: 120ms var(--ease-base);
+  --transition-base: 180ms var(--ease-base);
+  --transition-slow: 300ms var(--ease-base);
+
+  --code-bg: #1e293b;
+  --code-border: #334155;
+
+  --mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+  --font-stack: -apple-system,BlinkMacSystemFont,"Segoe UI","Roboto","Oxygen","Ubuntu","Cantarell","Fira Sans","Droid Sans","Helvetica Neue",sans-serif;
+
+  --editor-gutter-width: 3.1rem;
 }
 
-/* ----------- 卡片 ----------- */
+.dark {
+  --color-bg: #181a20;
+  --color-bg-alt: #162132;
+  --color-surface: #1d2029;
+  --color-surface-alt: #22262f;
+  --color-surface-elevated: #22262fcc;
+
+  --color-border: #233548;
+  --color-border-strong: #37506b;
+
+  --color-text: #f1f5f9;
+  --color-text-soft: #dde5ed;
+  --color-text-fade: #8aa0b6;
+
+  --color-primary: #2563eb;
+  --color-primary-accent: #2563eb;
+  --color-primary-hover: #818cf8;
+  --color-primary-active: #4f46e5;
+
+  --code-bg: #0d1926;
+  --code-border: #1e2d3d;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.55),0 0 0 1px rgba(255,255,255,0.04);
+  --shadow-md: 0 4px 14px -2px rgba(0,0,0,0.60),0 2px 4px -2px rgba(0,0,0,0.45);
+  --shadow-lg: 0 12px 32px -8px rgba(0,0,0,0.75),0 6px 10px -3px rgba(0,0,0,0.55);
+}
+
+/* ------------- 全局基础 ------------- */
+html,body,#root{height:100%;}
+body{
+  font-family:var(--font-stack);
+  background:var(--color-bg);
+  color:var(--color-text);
+  font-size:15px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  transition:background-color var(--transition-slow),color var(--transition-slow);
+}
+::selection{background:rgba(var(--focus-ring-rgb)/0.25);color:var(--color-text);}
+.dark ::selection{background:rgba(var(--focus-ring-rgb)/0.45);}
+a{color:var(--color-primary);text-decoration:none;transition:color var(--transition-fast);}
+a:hover{color:var(--color-primary-hover);}
+
+/* ------------- 滚动条 ------------- */
+*{scrollbar-width:thin;scrollbar-color:rgba(120,138,160,0.45) transparent;}
+*::-webkit-scrollbar{width:10px;height:10px;}
+*::-webkit-scrollbar-track{background:transparent;}
+*::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg,#c4ced9,#94a3b8);
+  border-radius:6px;
+  border:2px solid transparent;
+  background-clip:padding-box;
+}
+*::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#2563eb,#1742b7);}
+.custom-scroll::-webkit-scrollbar{width:10px;height:10px;}
+.custom-scroll::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg,#b6c4d2,#2563eb);
+  border-radius:6px;
+  border:2px solid transparent;
+  background-clip:padding-box;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover{
+  background:linear-gradient(180deg,#2563eb,#1742b7);
+}
+
+/* ------------- 卡片、仪表盘 ------------- */
 .card, .panel, .card-small, .list-item {
   background: #fff;
   border-radius: 15px;
-  box-shadow: 0 6px 22px -8px rgba(60,80,130,0.09), 0 1.5px 4px rgba(60,80,130,0.03);
+  box-shadow: var(--shadow-md);
   border: 1.5px solid #ececf0;
   padding: 1.2rem 1.6rem;
   margin-bottom: 1.2rem;
 }
-
-/* ----------- 顶部栏 ----------- */
-.header-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #fff;
-  border-radius: 15px;
-  box-shadow: 0 2px 8px -3px rgba(60,80,130,0.07);
-  border: 1.5px solid #ececf0;
-  padding: 1.2rem 1.8rem;
-  margin-top: 1.6rem;
-  margin-bottom: 1.2rem;
-}
-
-.header-title {
-  font-size: 2.1rem;
-  font-weight: 800;
-  color: #21262b;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.header-desc {
-  font-size: 1rem;
-  color: #4c5673;
-  font-weight: 400;
-  margin-top: 0.1rem;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 1.2rem;
-}
-
-.btn-logout {
-  background: #ee5858;
-  color: #fff;
-  border: none;
-  font-size: 15px;
-  font-weight: 600;
-  border-radius: 8px;
-  padding: 0.65rem 1.35rem;
-  box-shadow: 0 1px 4px -2px #ee5858;
-  cursor: pointer;
-  transition: background 0.17s;
-}
-.btn-logout:hover {
-  background: #d93030;
-}
-
-/* ----------- 仪表盘状态 ----------- */
-.status-info {
-  color: #3ac569;
-  font-weight: 700;
-  font-size: 1.24rem;
-}
-.status-label {
-  font-size: 14px;
-  color: #888ea5;
-  font-weight: 500;
-  margin-bottom: 2px;
-}
-
 .status-block {
   background: #fff;
   border-radius: 13px;
@@ -109,8 +151,59 @@ body {
   font-size: 1.65rem;
   margin-bottom: 5px;
 }
+.status-info { color: #3ac569; font-weight: 700; font-size: 1.24rem; }
+.status-label { font-size: 14px; color: #888ea5; font-weight: 500; margin-bottom: 2px; }
 
-/* ----------- Tab 样式 ----------- */
+/* ------------- 顶部栏 ----------- */
+.header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-radius: 15px;
+  box-shadow: 0 2px 8px -3px rgba(60,80,130,0.07);
+  border: 1.5px solid #ececf0;
+  padding: 1.2rem 1.8rem;
+  margin-top: 1.6rem;
+  margin-bottom: 1.2rem;
+}
+.header-title {
+  font-size: 2.1rem;
+  font-weight: 800;
+  color: #21262b;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.header-desc {
+  font-size: 1rem;
+  color: #4c5673;
+  font-weight: 400;
+  margin-top: 0.1rem;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+}
+.btn-logout {
+  background: #ee5858;
+  color: #fff;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0.65rem 1.35rem;
+  box-shadow: 0 1px 4px -2px #ee5858;
+  cursor: pointer;
+  transition: background 0.17s;
+}
+.btn-logout:hover {
+  background: #d93030;
+}
+
+/* ------------- Tab 样式 ----------- */
 .tabs-bar {
   display: flex;
   border-bottom: 2px solid #e2e4ea;
@@ -147,7 +240,7 @@ body {
   vertical-align: middle;
 }
 
-/* ----------- 表单 ----------- */
+/* ------------- 表单 ----------- */
 .form-group {
   margin-bottom: 24px;
 }
@@ -181,14 +274,14 @@ body {
   cursor: not-allowed;
 }
 
-/* ----------- 状态标记 ----------- */
+/* ------------- 状态标记 ----------- */
 .status-green { color: #3ac569; background: #e6f9ed; font-weight: 700; border-radius: 7px; padding: 2px 10px;}
 .status-blue { color: #2563eb; background: #eaf2fe; font-weight: 700; border-radius: 7px; padding: 2px 10px;}
 .status-yellow { color: #f5a623; background: #fff6e2; font-weight: 700; border-radius: 7px; padding: 2px 10px;}
 .status-red { color: #ee5858; background: #ffeaea; font-weight: 700; border-radius: 7px; padding: 2px 10px;}
 .status-gray { color: #7a8399; background: #f1f2f7; font-weight: 700; border-radius: 7px; padding: 2px 10px;}
 
-/* ----------- 彩色按钮 ----------- */
+/* ------------- 彩色按钮 ----------- */
 .btn-green {
   background: #3ac569;
   color: #fff;
@@ -216,7 +309,7 @@ body {
 }
 .btn-blue:hover { background: #1742b7; }
 
-/* ----------- 细分割线 ----------- */
+/* ------------- 分割线 ----------- */
 .divider {
   height: 1.5px;
   background: #e2e4ea;
@@ -225,7 +318,7 @@ body {
   border-radius: 2px;
 }
 
-/* ----------- 现代表格 ----------- */
+/* ------------- 现代表格 ----------- */
 .table-modern {
   width: 100%;
   background: #fff;
@@ -249,7 +342,7 @@ body {
   border-bottom: none;
 }
 
-/* ----------- 响应式 ----------- */
+/* ------------- 响应式 ----------- */
 @media (max-width: 800px) {
   .header-bar, .card, .card-small, .status-block {
     padding: 1rem 0.8rem;
@@ -263,21 +356,15 @@ body {
   .header-bar { flex-direction: column; gap: 0.8rem; }
 }
 
-/* ----------- 保留原有按钮/输入/编辑器特性 ----------- */
-/* 可保留原 tailwind/功能性 class，不会影响原有事件和布局 */
-}
+/* --------- 保留原有按钮/输入/编辑器特性 --------- */
+/* 原生编辑器、拖拽分隔条等样式不变，可继续原有功能 */
 
-/* ------------- 其他保留（编辑器/分隔条/调试等） ------------- */
-/* ...原有编辑器、分隔条、loading dots、api-debug-entry等样式可保留... */
+/* ------------- 其他原始样式（编辑器/分隔条/调试/动画/列表等） ------------- */
 
-/* ==========================================================================
-   END
-   ========================================================================== */
-/* ------------- 新版编辑器核心布局 ------------- */
+/* 编辑器分栏与拖拽分隔条 */
 .editor-split-root{
   min-height:0;display:flex;flex:1 1 auto;overflow:hidden;
 }
-
 .editor-pane,.preview-pane {
   flex: 0 0 auto;
   min-width: 0;
@@ -286,18 +373,15 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
-
 .editor-scroll,.preview-scroll{
   flex:1 1 0;min-height:0;min-width:0;overflow:auto;
   position:relative;display:flex;flex-direction:column;
   background:var(--color-surface);
 }
 .dark .editor-scroll,.dark .preview-scroll{background:var(--color-surface-alt);}
-
 .editor-inner{
   position:relative;flex:1 1 auto;min-height:0;display:flex;font-family:var(--mono);
 }
-
 .editor-line-numbers{
   position:sticky;left:0;top:0;align-self:stretch;display:block;
   padding:8px 8px 8px 10px;font-size:13px;line-height:1.5;color:#94a3b8;
@@ -307,15 +391,12 @@ body {
   flex:0 0 auto;font-family:var(--mono);
 }
 .dark .editor-line-numbers{background:var(--color-surface-alt);color:#64748b;}
-
 .editor-line-numbers-inner{
   position:absolute;left:0;right:0;top:8px;white-space:pre;
   font-variant-numeric:tabular-nums;line-height:1.5;font-size:13px;
   font-family:var(--mono);transform:translateY(0);will-change:transform;padding-right:4px;
 }
-
 .editor-text-wrapper{flex:1 1 auto;min-height:0;position:relative;display:block;}
-
 .editor-textarea{
   width:100%;height:100%;border:none;outline:none;resize:none;
   padding:8px 16px;font-size:13px;line-height:1.5;
@@ -326,7 +407,6 @@ body {
 }
 .dark .editor-textarea{background:var(--color-surface-alt);}
 .editor-textarea:focus{outline:none;}
-
 .preview-pane{
   background:var(--color-surface);
   border-left:1px solid var(--color-border);
@@ -343,8 +423,6 @@ body {
   margin:6px 0;border:1px solid var(--color-border);
   border-radius:6px;box-shadow:var(--shadow-sm);
 }
-
-/* ------------- 分隔条 ------------- */
 .split-divider{
   position:relative;flex:0 0 auto;
   background:linear-gradient(180deg,#e2e8f0,#cbd5e1);
@@ -364,18 +442,7 @@ body {
 .split-divider.dragging {
   background: #a5b4fc !important;
 }
-
-/* 拖动时禁止选中 */
 body.editor-resizing,body.editor-resizing *{user-select:none!important;}
-
-/* ------------- 面板 / 列表 ------------- */
-.panel{
-  background:var(--color-surface-elevated);border:1px solid var(--color-border);
-  border-radius:var(--radius-xl);box-shadow:var(--shadow-sm);
-  backdrop-filter:blur(8px);padding:1rem 1.2rem 1.35rem;position:relative;
-  transition:border-color var(--transition-base),box-shadow var(--transition-base),background var(--transition-base);
-}
-.panel:hover{border-color:var(--color-border-strong);}
 .panel-header{
   font-size:13px;font-weight:600;margin-bottom:.75rem;
   letter-spacing:.5px;text-transform:uppercase;opacity:.8;
@@ -388,7 +455,23 @@ body.editor-resizing,body.editor-resizing *{user-select:none!important;}
 }
 .block-item-active:hover::before{filter:brightness(1.05);}
 
-/* ------------- Loading dots ------------- */
+/* Toast/调试/动画/列表等 */
+.toast{
+  background:var(--color-surface-elevated);color:var(--color-text);
+  border:1px solid var(--color-border-strong);padding:.7rem .95rem;
+  border-radius:var(--radius-lg);font-size:13px;display:flex;align-items:center;gap:.6rem;
+  box-shadow:var(--shadow-md);animation:fade-in .35s var(--ease-base);backdrop-filter:blur(8px);
+}
+.toast-success{border-color:var(--color-success);}
+.toast-error{border-color:var(--color-danger);}
+.toast-info{border-color:var(--color-primary);}
+.toast-warning{border-color:var(--color-warning);}
+.text-danger{color:var(--color-danger);}
+.text-success{color:var(--color-success);}
+.text-warning{color:var(--color-warning);}
+.fade-in{animation:fade-in .4s var(--ease-base);}
+@keyframes fade-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}
+}
 .loading-dots::after{
   content:"";display:inline-block;width:1.3em;text-align:left;
   animation:loading-dots 1s steps(4,end) infinite;
@@ -396,8 +479,6 @@ body.editor-resizing,body.editor-resizing *{user-select:none!important;}
 @keyframes loading-dots{
   0%{content:"";}25%{content:".";}50%{content:"..";}75%{content:"...";}100%{content:"";}
 }
-
-/* ------------- 调试输出 ------------- */
 .api-debug-entry{
   font-family:var(--mono);font-size:11.5px;line-height:1.35;
   background:var(--color-surface-alt);padding:4px 6px;
@@ -406,8 +487,6 @@ body.editor-resizing,body.editor-resizing *{user-select:none!important;}
 }
 .hidden-scrollbar{scrollbar-width:none;}
 .hidden-scrollbar::-webkit-scrollbar{width:0;height:0;}
-
 /* ==========================================================================
    END
    ========================================================================== */
-
