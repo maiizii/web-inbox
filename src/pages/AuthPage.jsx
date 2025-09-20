@@ -49,9 +49,13 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-500 text-transparent bg-clip-text">
+          <!--<h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-500 text-transparent bg-clip-text">
             Web Tips
-          </h1>
+          </h1>-->
+            <h1 className="h-14 mx-auto">
+           <img src="https://img.686656.xyz/images/i/2025/09/20/68cea8557250f.png" alt="Web Tips Logo" className="h-full object-contain"/>
+           </h1>
+
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {mode === "login" ? "登录到你的知识小片段" : "创建你的账号（需要邀请码）"}
           </p>
@@ -107,13 +111,13 @@ export default function AuthPage() {
           </div>
           {mode === "register" && (
             <>
-              <div className="space-y-1">
+              <!--<div className="space-y-1">
                 <label className="text-xs font-medium text-slate-500 dark:text-slate-400">昵称（可选）</label>
                 <input
                   className="input-modern"
                   value={name}
                   onChange={e => setName(e.target.value)}
-                />
+                />-->
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-500 dark:text-slate-400">邀请码</label>
