@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Undo2, Redo2, Link2 } from "lucide-react";
+import { Undo2, Redo2 } from "lucide-react";
 import { apiUploadImage } from "../../api/cloudflare.js";
 import { useDebouncedCallback } from "../../hooks/useDebouncedCallback.js";
 import { useToast } from "../../hooks/useToast.jsx";
@@ -11,13 +11,14 @@ const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
 
 /**
- * 改良版编辑器：
- * - 双向滚动同步但不干扰用户拖动滚动条
- * - 小内容时隐藏滚动条（通过 no-v-scroll 类）
- * - 每个 Block 独立 Undo/Redo
- * - 仅解析图片
- * - 分隔条拖动
- * - 同步滚动可开关
+ * BlockEditorAuto (updated, divider drag fix)
+ *
+ * - Make textarea the single scrollable element in editor pane.
+ * - Listen to textarea.scroll and preview.scroll, not outer container scroll.
+ * - Use pointer guards + programmaticScrollRef to avoid "stealing" the thumb during user drag.
+ * - detectOverflow checks textarea and preview elements and toggles .no-v-scroll.
+ * - Per-block history, undo/redo, image upload placeholders, split dragging, etc.
+ * - Divider drag is fully fixed with higher z-index and pointer-events.
  */
 export default function BlockEditorAuto({
   block,
@@ -40,7 +41,7 @@ export default function BlockEditorAuto({
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : 0.5;
-    return clamp(isNaN(v) ? 0.5 : v, MIN_RATIO, MAX_RATIO);
+    return isNaN(v) ? 0.5 : Math.min(MAX_RATIO, Math.max(MIN_RATIO, v));
   });
   const [draggingDivider, setDraggingDivider] = useState(false);
   const [lineNumbers, setLineNumbers] = useState("1");
@@ -49,7 +50,7 @@ export default function BlockEditorAuto({
 
   /* ---------------- Refs ---------------- */
   const splitContainerRef = useRef(null);
-  const editorScrollRef = useRef(null);
+  const editorScrollRef = useRef(null); // layout only, not used for scroll
   const previewScrollRef = useRef(null);
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
@@ -62,21 +63,20 @@ export default function BlockEditorAuto({
   const lastPersisted = useRef({ content: "" });
   const currentBlockIdRef = useRef(block?.id || null);
 
-  // divider
+  // divider drag
   const dividerDragRef = useRef(null);
 
-  // history: Map<blockId, {stack, index, lastPush}>
+  // history per block
   const historyStoreRef = useRef(new Map());
   const isRestoringHistoryRef = useRef(false);
 
-  // scroll sync
-  const scrollSourceRef = useRef(null); // "editor" | "preview" | null
+  // scroll sync guards
   const programmaticScrollRef = useRef(false);
-  const scrollSetRafRef = useRef(null);
-  const scrollIdleTimerRef = useRef(null);
   const pointerActiveRef = useRef({ editor: false, preview: false });
+  const scrollSourceRef = useRef(null); // "editor" | "preview" | null
+  const scrollIdleTimerRef = useRef(null);
 
-  // overflow detection
+  // overflow detection timer
   const overflowCheckTimerRef = useRef(null);
 
   /* ---------------- Derived ---------------- */
@@ -108,7 +108,7 @@ export default function BlockEditorAuto({
     return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
   }
   function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
-  function updateLineNumbers(txt) {
+  function updateLineNums(txt) {
     if (!txt) { setLineNumbers("1"); return; }
     setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
   }
@@ -137,9 +137,7 @@ export default function BlockEditorAuto({
       h.lastPush = now;
       return;
     }
-    if (h.index < h.stack.length - 1) {
-      h.stack.splice(h.index + 1);
-    }
+    if (h.index < h.stack.length - 1) h.stack.splice(h.index + 1);
     h.stack.push(newContent);
     if (h.stack.length > MAX_HISTORY) h.stack.shift();
     else h.index++;
@@ -156,11 +154,11 @@ export default function BlockEditorAuto({
     const snap = h.stack[next];
     isRestoringHistoryRef.current = true;
     setContent(snap);
-    updateLineNumbers(snap);
+    updateLineNums(snap);
     updatePreview(snap);
     requestAnimationFrame(() => {
       isRestoringHistoryRef.current = false;
-      detectOverflow(); // 更新滚动条显示状态
+      detectOverflow();
     });
   }
   function handleUndoRedoKey(e) {
@@ -184,7 +182,7 @@ export default function BlockEditorAuto({
     setContent(init);
     lastPersisted.current = { content: init };
     ensureHistory(block?.id, init);
-    updateLineNumbers(init);
+    updateLineNums(init);
     updatePreview(init);
     userManuallyBlurredRef.current = false;
     shouldRestoreFocusRef.current = false;
@@ -208,11 +206,9 @@ export default function BlockEditorAuto({
 
   /* ---------------- Selection / Focus ---------------- */
   function captureSel() {
-    if (!textareaRef.current) return;
-    selectionRef.current = {
-      start: textareaRef.current.selectionStart,
-      end: textareaRef.current.selectionEnd
-    };
+    const ta = textareaRef.current;
+    if (!ta) return;
+    selectionRef.current = { start: ta.selectionStart, end: ta.selectionEnd };
   }
   function restoreSel() {
     const ta = textareaRef.current;
@@ -224,8 +220,9 @@ export default function BlockEditorAuto({
   function maybeRestoreFocus() {
     if (userManuallyBlurredRef.current) return;
     if (!shouldRestoreFocusRef.current) return;
-    if (textareaRef.current && document.activeElement !== textareaRef.current) {
-      textareaRef.current.focus();
+    const ta = textareaRef.current;
+    if (ta && document.activeElement !== ta) {
+      ta.focus();
       restoreSel();
     }
   }
@@ -266,15 +263,8 @@ export default function BlockEditorAuto({
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
-  function onBlur() {
-    userManuallyBlurredRef.current = true;
-    flushSave();
-  }
-  function onContentFocus() {
-    userManuallyBlurredRef.current = false;
-    shouldRestoreFocusRef.current = true;
-    captureSel();
-  }
+  function onBlur() { userManuallyBlurredRef.current = true; flushSave(); }
+  function onContentFocus() { userManuallyBlurredRef.current = false; shouldRestoreFocusRef.current = true; captureSel(); }
 
   /* ---------------- 行号同步 ---------------- */
   function syncLineNumbersPadding() {
@@ -292,16 +282,20 @@ export default function BlockEditorAuto({
   }, []);
   useEffect(() => { syncLineNumbersPadding(); }, [content]);
 
-  /* ---------------- 溢出检测（决定是否隐藏滚动条） ---------------- */
+  /* ---------------- 溢出检测 ---------------- */
   function detectOverflow() {
     if (overflowCheckTimerRef.current) cancelAnimationFrame(overflowCheckTimerRef.current);
     overflowCheckTimerRef.current = requestAnimationFrame(() => {
-      [editorScrollRef.current, previewScrollRef.current].forEach(el => {
-        if (!el) return;
-        const hasOverflow = el.scrollHeight > el.clientHeight + 1;
-        if (hasOverflow) el.classList.remove("no-v-scroll");
-        else el.classList.add("no-v-scroll");
-      });
+      const ta = textareaRef.current;
+      if (ta) {
+        const hasOverflow = ta.scrollHeight > ta.clientHeight + 1;
+        if (hasOverflow) ta.classList.remove("no-v-scroll"); else ta.classList.add("no-v-scroll");
+      }
+      const pv = previewScrollRef.current;
+      if (pv) {
+        const hasOverflow = pv.scrollHeight > pv.clientHeight + 1;
+        if (hasOverflow) pv.classList.remove("no-v-scroll"); else pv.classList.add("no-v-scroll");
+      }
     });
   }
   useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio]);
@@ -334,7 +328,7 @@ export default function BlockEditorAuto({
       const nl = prev && !prev.endsWith("\n") ? "\n" : "";
       const nc = prev + nl + placeholder + "\n";
       pushHistory(nc, true);
-      updateLineNumbers(nc);
+      updateLineNums(nc);
       updatePreview(nc);
       detectOverflow();
       return nc;
@@ -345,7 +339,7 @@ export default function BlockEditorAuto({
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, `![image](${img.url})`);
-        updateLineNumbers(replaced);
+        updateLineNums(replaced);
         updatePreview(replaced);
         persistAfterImage(replaced);
         detectOverflow();
@@ -356,7 +350,7 @@ export default function BlockEditorAuto({
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, "![失败](#)");
-        updateLineNumbers(replaced);
+        updateLineNums(replaced);
         updatePreview(replaced);
         persistAfterImage(replaced);
         detectOverflow();
@@ -412,7 +406,7 @@ export default function BlockEditorAuto({
       const adjust = target.length - newTarget.length;
       const newSelEnd = end - adjust;
       setContent(newContent);
-      updateLineNumbers(newContent);
+      updateLineNums(newContent);
       updatePreview(newContent);
       pushHistory(newContent);
       detectOverflow();
@@ -426,7 +420,7 @@ export default function BlockEditorAuto({
         const newLine = INDENT + lines[0];
         const newContent = before + newLine + after;
         setContent(newContent);
-        updateLineNumbers(newContent);
+        updateLineNums(newContent);
         updatePreview(newContent);
         pushHistory(newContent);
         detectOverflow();
@@ -442,7 +436,7 @@ export default function BlockEditorAuto({
         const newContent = before + newTarget + after;
         const delta = newLines.length * INDENT.length;
         setContent(newContent);
-        updateLineNumbers(newContent);
+        updateLineNums(newContent);
         updatePreview(newContent);
         pushHistory(newContent);
         detectOverflow();
@@ -455,7 +449,6 @@ export default function BlockEditorAuto({
     }
   }
 
-  /* ---------------- Keydown ---------------- */
   function handleKeyDown(e) {
     handleUndoRedoKey(e);
     handleIndentKey(e);
@@ -467,7 +460,8 @@ export default function BlockEditorAuto({
     e.preventDefault();
     const container = splitContainerRef.current;
     if (!container) return;
-    dividerDragRef.current = { rect: container.getBoundingClientRect() };
+    const rect = container.getBoundingClientRect();
+    dividerDragRef.current = { rect };
     setDraggingDivider(true);
     document.body.classList.add("editor-resizing");
     window.addEventListener("mousemove", onDividerMove);
@@ -514,11 +508,10 @@ export default function BlockEditorAuto({
   }
   useEffect(() => () => { if (draggingDivider) stopDividerDrag(); }, [draggingDivider]);
 
-  /* ---------------- 滚动同步 ---------------- */
+  /* ---------------- 滚动同步（监听 textarea & preview-scroll） ---------------- */
   function markPointer(source, active) {
     pointerActiveRef.current[source] = active;
     if (!active) {
-      // 延时清空 scrollSourceRef
       if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
       scrollIdleTimerRef.current = setTimeout(() => {
         scrollSourceRef.current = null;
@@ -533,50 +526,80 @@ export default function BlockEditorAuto({
     markPointer(source, false);
   }
 
-  function syncScroll(from) {
+  function syncFromEditor() {
     if (!syncScrollEnabled || !showPreview) return;
-    if (programmaticScrollRef.current) return; // 正在程序设置
-    const editorEl = editorScrollRef.current;
-    const previewEl = previewScrollRef.current;
-    if (!editorEl || !previewEl) return;
-
-    // 如果两个都在用户主动操作，放弃
-    if (pointerActiveRef.current.editor && pointerActiveRef.current.preview && from) return;
-
-    const other = from === "editor" ? previewEl : editorEl;
-    const sourceEl = from === "editor" ? editorEl : previewEl;
-
-    const ratio = sourceEl.scrollTop / Math.max(1, sourceEl.scrollHeight - sourceEl.clientHeight);
-    const target = ratio * (other.scrollHeight - other.clientHeight);
-    if (Math.abs(other.scrollTop - target) < 3) return;
-
+    if (programmaticScrollRef.current) return;
+    const ta = textareaRef.current;
+    const pv = previewScrollRef.current;
+    if (!ta || !pv) return;
+    if (pointerActiveRef.current.preview) return;
+    const ratio = ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight);
+    const target = ratio * (pv.scrollHeight - pv.clientHeight);
+    if (Math.abs(pv.scrollTop - target) < 2) return;
     programmaticScrollRef.current = true;
-    other.scrollTop = target;
-    // 延后一帧取消标志，避免立即触发回滚
-    requestAnimationFrame(() => {
-      programmaticScrollRef.current = false;
-    });
+    pv.scrollTop = target;
+    requestAnimationFrame(() => { programmaticScrollRef.current = false; });
   }
 
-  function handleEditorScroll() {
+  function syncFromPreview() {
+    if (!syncScrollEnabled || !showPreview) return;
     if (programmaticScrollRef.current) return;
-    if (scrollSourceRef.current && scrollSourceRef.current !== "editor" && !pointerActiveRef.current.editor) return;
-    syncScroll("editor");
-    if (lineNumbersInnerRef.current && editorScrollRef.current) {
-      lineNumbersInnerRef.current.style.transform =
-        `translateY(${-editorScrollRef.current.scrollTop}px)`;
-    }
-  }
-  function handlePreviewScroll() {
-    if (programmaticScrollRef.current) return;
-    if (scrollSourceRef.current && scrollSourceRef.current !== "preview" && !pointerActiveRef.current.preview) return;
-    syncScroll("preview");
+    const ta = textareaRef.current;
+    const pv = previewScrollRef.current;
+    if (!ta || !pv) return;
+    if (pointerActiveRef.current.editor) return;
+    const ratio = pv.scrollTop / Math.max(1, pv.scrollHeight - pv.clientHeight);
+    const target = ratio * (ta.scrollHeight - ta.clientHeight);
+    if (Math.abs(ta.scrollTop - target) < 2) return;
+    programmaticScrollRef.current = true;
+    ta.scrollTop = target;
+    requestAnimationFrame(() => { programmaticScrollRef.current = false; });
   }
 
-  /* ---------------- 内容变化 ---------------- */
+  useEffect(() => {
+    const ta = textareaRef.current;
+    const pv = previewScrollRef.current;
+    if (!ta || !pv) return;
+
+    detectOverflow();
+
+    const onTaScroll = () => {
+      if (programmaticScrollRef.current) return;
+      if (pointerActiveRef.current.preview) return;
+      syncFromEditor();
+      if (lineNumbersInnerRef.current) {
+        lineNumbersInnerRef.current.style.transform = `translateY(${-ta.scrollTop}px)`;
+      }
+    };
+    const onPvScroll = () => {
+      if (programmaticScrollRef.current) return;
+      if (pointerActiveRef.current.editor) return;
+      syncFromPreview();
+    };
+
+    ta.addEventListener("scroll", onTaScroll, { passive: true });
+    pv.addEventListener("scroll", onPvScroll, { passive: true });
+
+    ta.addEventListener("pointerdown", () => onPointerDownContainer("editor"));
+    ta.addEventListener("pointerup", () => onPointerUpContainer("editor"));
+    pv.addEventListener("pointerdown", () => onPointerDownContainer("preview"));
+    pv.addEventListener("pointerup", () => onPointerUpContainer("preview"));
+
+    return () => {
+      ta.removeEventListener("scroll", onTaScroll);
+      pv.removeEventListener("scroll", onPvScroll);
+      ta.removeEventListener("pointerdown", () => onPointerDownContainer("editor"));
+      ta.removeEventListener("pointerup", () => onPointerUpContainer("editor"));
+      pv.removeEventListener("pointerdown", () => onPointerDownContainer("preview"));
+      pv.removeEventListener("pointerup", () => onPointerUpContainer("preview"));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncScrollEnabled, previewMode, showPreview]);
+
+  /* ---------------- 内容修改 ---------------- */
   function handleContentChange(v) {
     setContent(v);
-    updateLineNumbers(v);
+    updateLineNums(v);
     updatePreview(v);
     pushHistory(v);
     detectOverflow();
@@ -693,9 +716,7 @@ export default function BlockEditorAuto({
           <div
             className="editor-scroll custom-scroll"
             ref={editorScrollRef}
-            onScroll={handleEditorScroll}
-            onPointerDown={() => onPointerDownContainer("editor")}
-            onPointerUp={() => onPointerUpContainer("editor")}
+            // NO onScroll here; textarea below is the scrollable element!
           >
             <div className="editor-inner">
               <div className="editor-line-numbers">
@@ -710,7 +731,7 @@ export default function BlockEditorAuto({
               <div className="editor-text-wrapper">
                 <textarea
                   ref={textareaRef}
-                  className="editor-textarea"
+                  className="editor-textarea custom-scroll"
                   value={content}
                   disabled={disabledByCreation}
                   placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
@@ -726,6 +747,7 @@ export default function BlockEditorAuto({
                   onClick={captureSel}
                   onKeyUp={captureSel}
                   onKeyDown={handleKeyDown}
+                  style={{ overflow: "auto" }} /* textarea is the scrollable element */
                 />
               </div>
             </div>
@@ -742,6 +764,7 @@ export default function BlockEditorAuto({
             onTouchStart={startDividerDrag}
             onDoubleClick={resetSplit}
             title="拖动调整比例，双击恢复 50%"
+            /* Drag fix: High z-index and pointer-events are in CSS */
           />
         )}
 
@@ -758,9 +781,6 @@ export default function BlockEditorAuto({
             <div
               ref={previewScrollRef}
               className="preview-scroll custom-scroll"
-              onScroll={handlePreviewScroll}
-              onPointerDown={() => onPointerDownContainer("preview")}
-              onPointerUp={() => onPointerUpContainer("preview")}
             >
               <div
                 className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
