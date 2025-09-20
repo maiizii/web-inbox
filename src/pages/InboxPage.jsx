@@ -10,6 +10,7 @@ import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
 
+// 排序工具：置顶区按编辑时间倒序，未置顶区按拖拽或编辑时间倒序
 function sortBlocks(blocks, manualOrder) {
   const pinned = blocks.filter(b => b.pinned)
     .sort((a, b) => {
@@ -23,6 +24,7 @@ function sortBlocks(blocks, manualOrder) {
       .map(id => others.find(b => b.id === id))
       .filter(Boolean);
   } else {
+    // 默认未置顶区最新编辑在前
     others = others.sort((a, b) => {
       const ta = new Date(a.updated_at || a.created_at || "1970-01-01").getTime();
       const tb = new Date(b.updated_at || b.created_at || "1970-01-01").getTime();
@@ -47,7 +49,7 @@ export default function InboxPage() {
       const list = await apiListBlocks();
       setBlocks(list);
       if (!selectedId && list.length) setSelectedId(list[0].id);
-      // setManualOrder(null); // 不重置手动排序
+      // setManualOrder(null);  // 不重置拖拽顺序
     } catch (e) {
       toast.push(e.message || "加载失败", { type: "error" });
     } finally {
@@ -57,6 +59,7 @@ export default function InboxPage() {
 
   useEffect(() => { loadBlocks(); }, []); // eslint-disable-line
 
+  // 搜索过滤
   const filteredBlocks = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return blocks;
@@ -65,6 +68,7 @@ export default function InboxPage() {
     );
   }, [blocks, q]);
 
+  // 渲染用排序
   const sortedBlocks = useMemo(() => {
     return sortBlocks(filteredBlocks, manualOrder);
   }, [filteredBlocks, manualOrder]);
@@ -78,9 +82,23 @@ export default function InboxPage() {
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)));
   }
 
+  // 内容保存时，自动排序未置顶区（最新编辑在最前），置顶区不变
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
-    setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
+    setBlocks(prev => {
+      // 更新内容
+      const updated = prev.map(b => (b.id === id ? { ...b, ...real } : b));
+      // 未置顶区自动排序（最新编辑在前），置顶区不变
+      const pinned = updated.filter(b => b.pinned);
+      let others = updated.filter(b => !b.pinned);
+      others = others.sort((a, b) => {
+        const ta = new Date(a.updated_at || a.created_at || "1970-01-01").getTime();
+        const tb = new Date(b.updated_at || b.created_at || "1970-01-01").getTime();
+        return tb - ta;
+      });
+      setManualOrder(null); // 清除拖拽顺序，改用自动排序
+      return [...pinned, ...others];
+    });
     return real;
   }
 
@@ -102,7 +120,6 @@ export default function InboxPage() {
         prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
       );
       setSelectedId(real.id);
-      // 新建后如果需要刷新 blocks，才调用 loadBlocks
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
@@ -120,13 +137,13 @@ export default function InboxPage() {
         setSelectedId(remain.length ? remain[0].id : null);
       }
       if (manualOrder) setManualOrder(manualOrder.filter(i => i !== id));
-      // 删除后如果需要刷新 blocks，才调用 loadBlocks
     } catch (e) {
       toast.push(e.message || "删除失败", { type: "error" });
       setBlocks(snapshot);
     }
   }
 
+  // 拖拽排序，仅限未置顶的 block
   function onDragStart(id) {
     setDraggingId(id);
   }
@@ -143,7 +160,6 @@ export default function InboxPage() {
       const [item] = newNotPinned.splice(from, 1);
       newNotPinned.splice(to, 0, item);
       setManualOrder(newNotPinned.map(b => b.id));
-      // 返回 pinned + 新排序的 notPinned（只是临时渲染，blocks实际顺序不变）
       return [...pinned, ...newNotPinned];
     });
   }
@@ -157,8 +173,7 @@ export default function InboxPage() {
     try {
       await apiReorderBlocks(order);
       toast.push("顺序已保存", { type: "success" });
-      // 不要调用 loadBlocks，保持本地状态
-      // await loadBlocks();
+      // 不要 reload blocks，保持本地顺序和 pinned 状态
     } catch (e) {
       toast.push(e.message || "保存顺序失败", { type: "error" });
     } finally {
@@ -166,16 +181,28 @@ export default function InboxPage() {
     }
   }
 
-  function onPin(id) {
-    setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: true } : b));
-    setManualOrder(prev => prev ? prev.filter(i => i !== id) : prev);
+  // 置顶/取消置顶需要同步后端（apiUpdateBlock）
+  async function onPin(id) {
+    try {
+      const real = await apiUpdateBlock(id, { pinned: true });
+      setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...real } : b));
+      setManualOrder(prev => prev ? prev.filter(i => i !== id) : prev);
+    } catch (e) {
+      toast.push(e.message || "置顶失败", { type: "error" });
+    }
   }
-  function onUnpin(id) {
-    setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: false } : b));
-    setManualOrder(prev => {
-      const notPinnedBlocks = blocks.filter(b => !b.pinned && b.id !== id).map(b => b.id);
-      return [id, ...notPinnedBlocks];
-    });
+  async function onUnpin(id) {
+    try {
+      const real = await apiUpdateBlock(id, { pinned: false });
+      setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...real } : b));
+      // 取消置顶后插入未置顶区首位
+      setManualOrder(prev => {
+        const notPinnedBlocks = blocks.filter(b => !b.pinned && b.id !== id).map(b => b.id);
+        return [id, ...notPinnedBlocks];
+      });
+    } catch (e) {
+      toast.push(e.message || "取消置顶失败", { type: "error" });
+    }
   }
 
   return (
