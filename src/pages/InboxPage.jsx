@@ -19,7 +19,6 @@ function sortBlocks(blocks, manualOrder) {
     });
   let others = blocks.filter(b => !b.pinned);
   if (manualOrder && manualOrder.length === others.length) {
-    // manualOrder仅用于未置顶区
     others = manualOrder
       .map(id => others.find(b => b.id === id))
       .filter(Boolean);
@@ -40,7 +39,6 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [draggingId, setDraggingId] = useState(null);
-  // manualOrder只存未置顶区的id顺序
   const [manualOrder, setManualOrder] = useState(null);
 
   async function loadBlocks() {
@@ -49,8 +47,7 @@ export default function InboxPage() {
       const list = await apiListBlocks();
       setBlocks(list);
       if (!selectedId && list.length) setSelectedId(list[0].id);
-      // 加载后保留 manualOrder（不重置），防止拖拽丢失
-      // setManualOrder(null); // 不要重置
+      // setManualOrder(null); // 不重置手动排序
     } catch (e) {
       toast.push(e.message || "加载失败", { type: "error" });
     } finally {
@@ -60,7 +57,6 @@ export default function InboxPage() {
 
   useEffect(() => { loadBlocks(); }, []); // eslint-disable-line
 
-  // 搜索过滤
   const filteredBlocks = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return blocks;
@@ -69,7 +65,6 @@ export default function InboxPage() {
     );
   }, [blocks, q]);
 
-  // 渲染用排序
   const sortedBlocks = useMemo(() => {
     return sortBlocks(filteredBlocks, manualOrder);
   }, [filteredBlocks, manualOrder]);
@@ -107,6 +102,7 @@ export default function InboxPage() {
         prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
       );
       setSelectedId(real.id);
+      // 新建后如果需要刷新 blocks，才调用 loadBlocks
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
@@ -124,13 +120,13 @@ export default function InboxPage() {
         setSelectedId(remain.length ? remain[0].id : null);
       }
       if (manualOrder) setManualOrder(manualOrder.filter(i => i !== id));
+      // 删除后如果需要刷新 blocks，才调用 loadBlocks
     } catch (e) {
       toast.push(e.message || "删除失败", { type: "error" });
       setBlocks(snapshot);
     }
   }
 
-  // 拖拽排序，仅限未置顶的 block
   function onDragStart(id) {
     setDraggingId(id);
   }
@@ -138,7 +134,6 @@ export default function InboxPage() {
     e.preventDefault();
     if (!draggingId || draggingId === overId) return;
     setBlocks(prev => {
-      // pinned区保持原顺序与状态
       const pinned = prev.filter(b => b.pinned);
       const notPinned = prev.filter(b => !b.pinned);
       const from = notPinned.findIndex(b => b.id === draggingId);
@@ -147,8 +142,8 @@ export default function InboxPage() {
       const newNotPinned = [...notPinned];
       const [item] = newNotPinned.splice(from, 1);
       newNotPinned.splice(to, 0, item);
-      // 只更新manualOrder，不动pinned
       setManualOrder(newNotPinned.map(b => b.id));
+      // 返回 pinned + 新排序的 notPinned（只是临时渲染，blocks实际顺序不变）
       return [...pinned, ...newNotPinned];
     });
   }
@@ -162,8 +157,8 @@ export default function InboxPage() {
     try {
       await apiReorderBlocks(order);
       toast.push("顺序已保存", { type: "success" });
-      // 不重置manualOrder，保留拖拽顺序
-      await loadBlocks();
+      // 不要调用 loadBlocks，保持本地状态
+      // await loadBlocks();
     } catch (e) {
       toast.push(e.message || "保存顺序失败", { type: "error" });
     } finally {
@@ -171,14 +166,12 @@ export default function InboxPage() {
     }
   }
 
-  // 置顶和取消置顶事件
   function onPin(id) {
     setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: true } : b));
     setManualOrder(prev => prev ? prev.filter(i => i !== id) : prev);
   }
   function onUnpin(id) {
     setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: false } : b));
-    // 取消置顶后将该block插入未置顶区首位
     setManualOrder(prev => {
       const notPinnedBlocks = blocks.filter(b => !b.pinned && b.id !== id).map(b => b.id);
       return [id, ...notPinnedBlocks];
