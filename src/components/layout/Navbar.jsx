@@ -1,3 +1,4 @@
+// src/components/layout/Navbar.jsx
 import React from "react";
 import { RefreshCw, LogOut, Moon, Sun } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -22,13 +23,11 @@ export default function Navbar() {
   return (
     <header className="border-b border-slate-200/70 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-sm">
       <div className="w-full px-4 md:px-6 h-14 flex items-center gap-4">
-        {/* 左上角 Logo */}
         <img
           src="https://img.686656.xyz/images/i/2025/09/20/68ceb0f8dcda7.png"
           alt="Web Tips"
           className="h-full w-auto select-none object-contain"
         />
-
         <div className="flex items-center gap-2">
           <button
             onClick={testHealth}
@@ -45,7 +44,6 @@ export default function Navbar() {
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
-
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[150px]">
             {user?.email}
