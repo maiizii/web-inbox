@@ -15,7 +15,6 @@ function sortBlocksWithLatestOnTop(blocks, latestBlockId) {
   if (!latestBlockId) return blocks;
   const latestBlock = blocks.find(b => b.id === latestBlockId);
   if (!latestBlock) return blocks;
-  // 找到最新编辑的时间
   const latestEditTime = Math.max(
     ...blocks.map(b =>
       new Date(b.updated_at || b.created_at || "1970-01-01").getTime()
@@ -36,13 +35,9 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [draggingId, setDraggingId] = useState(null);
-
-  // 拖拽顺序（block id 数组）
   const [manualOrder, setManualOrder] = useState(null);
-  // 记录刚刚编辑的 block id
   const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
 
-  // 加载 blocks 并重置排序
   async function loadBlocks() {
     try {
       setLoading(true);
@@ -59,7 +54,6 @@ export default function InboxPage() {
 
   useEffect(() => { loadBlocks(); }, []); // eslint-disable-line
 
-  // 搜索过滤
   const filteredBlocks = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return blocks;
@@ -68,16 +62,13 @@ export default function InboxPage() {
     );
   }, [blocks, q]);
 
-  // 排序逻辑：优先用拖拽顺序，否则最新编辑置顶
   const sortedBlocks = useMemo(() => {
     let list = filteredBlocks;
     if (manualOrder && manualOrder.length === list.length) {
-      // 按拖拽顺序
       list = manualOrder
         .map(id => list.find(b => b.id === id))
         .filter(Boolean);
     } else if (lastEditedBlockId) {
-      // 最新编辑置顶
       list = sortBlocksWithLatestOnTop(list, lastEditedBlockId);
     }
     return list;
@@ -92,19 +83,17 @@ export default function InboxPage() {
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)));
   }
 
-  // 保存 block 内容时，最新编辑的 block 置顶，清除拖拽顺序，并将排序同步到后端
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
-    setLastEditedBlockId(id);  // 标记刚编辑的 block
-    setManualOrder(null);      // 清除手动顺序，进入最新编辑置顶模式
+    setLastEditedBlockId(id);
+    setManualOrder(null);
 
     setBlocks(prev => {
       const latestBlock = prev.find(b => b.id === id);
       if (!latestBlock) return prev;
       const rest = prev.filter(b => b.id !== id);
       const newList = [latestBlock, ...rest];
-      // 顺序同步到后端
       apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
       return newList;
     });
@@ -112,7 +101,6 @@ export default function InboxPage() {
     return real;
   }
 
-  // 新建 block 时也置顶、清除拖拽顺序，并同步排序到后端
   async function createEmptyBlock() {
     const optimistic = {
       id: "tmp-" + Date.now(),
@@ -130,10 +118,9 @@ export default function InboxPage() {
         prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
       );
       setSelectedId(real.id);
-      setLastEditedBlockId(real.id); // 新建后也置顶
-      setManualOrder(null);          // 清除手动顺序，进入最新编辑置顶模式
+      setLastEditedBlockId(real.id);
+      setManualOrder(null);
 
-      // 保证新建排序也同步到后端
       setBlocks(prev => {
         const latestBlock = prev.find(b => b.id === real.id);
         if (!latestBlock) return prev;
@@ -166,7 +153,6 @@ export default function InboxPage() {
     }
   }
 
-  // 拖拽处理：拖拽后顺序以拖拽为准，清除最新编辑置顶模式
   function onDragStart(id) {
     setDraggingId(id);
   }
@@ -181,7 +167,7 @@ export default function InboxPage() {
       const [item] = list.splice(from, 1);
       list.splice(to, 0, item);
       setManualOrder(list.map(b => b.id));
-      setLastEditedBlockId(null); // 清除最新编辑置顶模式
+      setLastEditedBlockId(null);
       return list;
     });
   }
@@ -200,7 +186,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex flex-1 overflow-hidden bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
       <Sidebar
         blocks={sortedBlocks}
         selectedId={selectedId}
@@ -212,8 +198,9 @@ export default function InboxPage() {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        className="w-72 bg-white dark:bg-slate-800 border-r border-slate-200/60 dark:border-slate-700/50 shadow-md"
       />
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 p-4 md:p-6 overflow-auto">
         <BlockEditorAuto
           block={selected}
           onChange={optimisticChange}
