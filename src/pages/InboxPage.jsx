@@ -87,7 +87,7 @@ export default function InboxPage() {
     const real = await apiUpdateBlock(id, payload);
     setBlocks(prev => {
       // 更新内容
-      const updated = prev.map(b => (b.id === id ? { ...b, ...real } : b));
+      const updated = prev.map(b => b.id === id ? { ...b, ...real } : b);
       // 未置顶区自动排序（最新编辑在前），置顶区不变
       const pinned = updated.filter(b => b.pinned);
       let others = updated.filter(b => !b.pinned);
@@ -120,6 +120,7 @@ export default function InboxPage() {
         prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
       );
       setSelectedId(real.id);
+      // 新建后如果需要刷新 blocks，才调用 loadBlocks
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
@@ -137,13 +138,13 @@ export default function InboxPage() {
         setSelectedId(remain.length ? remain[0].id : null);
       }
       if (manualOrder) setManualOrder(manualOrder.filter(i => i !== id));
+      // 删除后如果需要刷新 blocks，才调用 loadBlocks
     } catch (e) {
       toast.push(e.message || "删除失败", { type: "error" });
       setBlocks(snapshot);
     }
   }
 
-  // 拖拽排序，仅限未置顶的 block
   function onDragStart(id) {
     setDraggingId(id);
   }
@@ -160,6 +161,7 @@ export default function InboxPage() {
       const [item] = newNotPinned.splice(from, 1);
       newNotPinned.splice(to, 0, item);
       setManualOrder(newNotPinned.map(b => b.id));
+      // 返回 pinned + 新排序的 notPinned（只是临时渲染，blocks实际顺序不变）
       return [...pinned, ...newNotPinned];
     });
   }
@@ -181,11 +183,11 @@ export default function InboxPage() {
     }
   }
 
-  // 置顶/取消置顶需要同步后端（apiUpdateBlock）
+  // 置顶/取消置顶需要同步后端（只改 pinned 字段，不能用 real 全覆盖！）
   async function onPin(id) {
     try {
-      const real = await apiUpdateBlock(id, { pinned: true });
-      setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...real } : b));
+      await apiUpdateBlock(id, { pinned: true });
+      setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: true } : b));
       setManualOrder(prev => prev ? prev.filter(i => i !== id) : prev);
     } catch (e) {
       toast.push(e.message || "置顶失败", { type: "error" });
@@ -193,8 +195,8 @@ export default function InboxPage() {
   }
   async function onUnpin(id) {
     try {
-      const real = await apiUpdateBlock(id, { pinned: false });
-      setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...real } : b));
+      await apiUpdateBlock(id, { pinned: false });
+      setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: false } : b));
       // 取消置顶后插入未置顶区首位
       setManualOrder(prev => {
         const notPinnedBlocks = blocks.filter(b => !b.pinned && b.id !== id).map(b => b.id);
