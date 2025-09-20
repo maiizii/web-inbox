@@ -1,24 +1,35 @@
-// src/context/ThemeContext.jsx
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 const ThemeCtx = createContext({ theme: "light", toggleTheme: () => {} });
-export const useTheme = () => useContext(ThemeCtx);
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem("theme");
     if (saved) return saved;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    const prefersDark =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return prefersDark ? "dark" : "light";
   });
 
   useEffect(() => {
-    const root = document.documentElement; // 关键：挂在 <html>
-    if (theme === "dark") root.classList.add("dark");
-    else root.classList.remove("dark");
+    // 把 .dark 挂到 <html>，确保所有 :root 变量与 Tailwind dark: 生效
+    document.documentElement.classList.toggle("dark", theme === "dark");
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  function toggleTheme() { setTheme(t => (t === "dark" ? "light" : "dark")); }
+  function toggleTheme() {
+    setTheme(t => (t === "dark" ? "light" : "dark"));
+  }
 
-  return <ThemeCtx.Provider value={{ theme, toggleTheme }}>{children}</ThemeCtx.Provider>;
+  return (
+    <ThemeCtx.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeCtx.Provider>
+  );
+}
+
+export function useTheme() {
+  return useContext(ThemeCtx);
 }
