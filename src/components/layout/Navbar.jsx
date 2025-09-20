@@ -26,7 +26,7 @@ export default function Navbar() {
         <img
           src="https://img.686656.xyz/images/i/2025/09/20/68cea8557250f.png"
           alt="Web Tips Logo"
-          className="h-8 w-auto select-none"
+          className="h-full w-auto select-none object-contain"
         />
 
         <div className="flex items-center gap-2">
