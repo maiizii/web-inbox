@@ -22,9 +22,7 @@ export default function BlockEditorAuto({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showPreview, setShowPreview] = useState(true);
-  const [previewMode, setPreviewMode] = useState(
-    () => localStorage.getItem("previewMode") || "vertical"
-  );
+  const [previewMode, setPreviewMode] = useState(() => localStorage.getItem("previewMode") || "vertical");
   const [splitRatio, setSplitRatio] = useState(() => {
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
@@ -68,7 +66,7 @@ export default function BlockEditorAuto({
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function renderPlainWithImages(raw) {
-    if (!raw) return "<span class='text-slate-400'>暂无内容</span>";
+    if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
     const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
     let out = "", last = 0, m;
     while ((m = re.exec(raw)) !== null) {
@@ -362,7 +360,7 @@ export default function BlockEditorAuto({
 
   function handleContentChange(v) { setContent(v); updateLineNums(v); updatePreview(v); pushHistory(v); detectOverflow(); }
 
-  if (!block) return <div className="flex items-center justify-center h-full text-sm text-slate-400">请选择左侧 Block 或点击“新建”</div>;
+  if (!block) return <div className="flex items-center justify-center h-full text-sm text-slate-400 dark:text-slate-500">请选择左侧 Block 或点击“新建”</div>;
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
@@ -378,21 +376,21 @@ export default function BlockEditorAuto({
             <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "上下预览" : "左右预览"}</button>
           </>}
           <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">{showPreview ? "隐藏预览" : "显示预览"}</button>
-          <div className="text-slate-400 select-none min-w-[64px] text-right">
+          <div className="text-slate-400 dark:text-slate-500 select-none min-w-[64px] text-right">
             {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
           </div>
           <button onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }} className="btn-danger-modern !px-3 !py-1.5">删除</button>
         </div>
       </div>
       <div ref={splitContainerRef} className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? previewMode === "vertical" ? "flex-row" : "flex-col" : "flex-col"} overflow-hidden`}>
-        <div className="editor-pane" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}>
+        <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}>
           <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
             <div className="editor-inner">
               <div className="editor-line-numbers"><pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre></div>
               <div className="editor-text-wrapper">
                 <textarea
                   ref={textareaRef}
-                  className="editor-textarea custom-scroll"
+                  className="editor-textarea custom-scroll dark:bg-slate-800 dark:text-slate-100"
                   value={content}
                   disabled={disabledByCreation}
                   placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
@@ -411,9 +409,9 @@ export default function BlockEditorAuto({
         </div>
         {showPreview && <>
           <div className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`} onMouseDown={startDividerDrag} onTouchStart={startDividerDrag} onDoubleClick={resetSplit} title="拖动调整比例，双击恢复 50%" />
-          <div className="preview-pane" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
-            <div ref={previewScrollRef} className="preview-scroll custom-scroll">
-              <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+          <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
+            <div ref={previewScrollRef} className="preview-scroll custom-scroll dark:bg-slate-900">
+              <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text dark:text-slate-300" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
         </>}
