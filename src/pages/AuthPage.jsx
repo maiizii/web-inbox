@@ -12,7 +12,7 @@ export default function AuthPage() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { refreshUser, user } = useAuth();
+  const { refreshUser } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -28,13 +28,15 @@ export default function AuthPage() {
       } else {
         await apiLogin(email, password);
       }
-      await refreshUser();
-      // 只有成功刷新并有 user 才跳转
-      setTimeout(() => {
-        if (user || true) { // 再次获取最新 user 的方式（简化）
-          navigate("/", { replace: true });
-        }
-      }, 50);
+
+      // 刷新用户信息
+      const newUser = await refreshUser();
+
+      if (newUser) {
+        navigate("/", { replace: true });
+      } else {
+        throw new Error("用户信息获取失败");
+      }
     } catch (err) {
       setError(err.message || "登录失败");
       toast.push(err.message || "失败", { type: "error" });
