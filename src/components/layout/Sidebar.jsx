@@ -1,29 +1,6 @@
 import React from "react";
 import { Plus } from "lucide-react";
 
-// 工具函数：将 selected block（如果其编辑时间是最新）置顶
-function sortBlocksWithSelectedOnTop(blocks, selectedId) {
-  if (!blocks.length || !selectedId) return blocks;
-  const selectedBlock = blocks.find(b => b.id === selectedId);
-  if (!selectedBlock) return blocks;
-
-  // 找到最新编辑的时间
-  const latestEditTime = Math.max(
-    ...blocks.map(b =>
-      new Date(b.updated_at || b.created_at || "1970-01-01").getTime()
-    )
-  );
-  const selectedEditTime = new Date(selectedBlock.updated_at || selectedBlock.created_at || "1970-01-01").getTime();
-
-  // 只有当当前选中的 block 编辑时间是最新时才置顶
-  if (selectedEditTime === latestEditTime) {
-    // 其他顺序保持，只把 selectedBlock移到最前面
-    const rest = blocks.filter(b => b.id !== selectedId);
-    return [selectedBlock, ...rest];
-  }
-  return blocks;
-}
-
 export default function Sidebar({
   blocks,
   selectedId,
@@ -36,9 +13,6 @@ export default function Sidebar({
   onDragOver,
   onDrop
 }) {
-  // 实时排序：被选中的 block 如果编辑时间最新，排最前
-  const sortedBlocks = sortBlocksWithSelectedOnTop(blocks, selectedId);
-
   return (
     <aside className="w-[15rem] shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 backdrop-blur flex flex-col">
       <div className="p-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700">
@@ -56,7 +30,7 @@ export default function Sidebar({
       <div className="px-3 pt-3">
         <input
           className="input-modern w-full"
-          placeholder="搜索..."
+            placeholder="搜索..."
           value={query}
           onChange={e => onQueryChange(e.target.value)}
         />
@@ -66,7 +40,7 @@ export default function Sidebar({
         onDragOver={e => e.preventDefault()}
         onDrop={onDrop}
       >
-        {sortedBlocks.map(b => {
+        {blocks.map(b => {
           const firstLine = (b.content || "").split("\n")[0] || "(空)";
           const derivedTitle = firstLine.slice(0, 64) || "(空)";
           const isSel = b.id === selectedId;
@@ -101,7 +75,7 @@ export default function Sidebar({
             </div>
           );
         })}
-        {!sortedBlocks.length && (
+        {!blocks.length && (
           <div className="text-xs text-slate-400 px-3 py-6 text-center">
             暂无内容
           </div>
