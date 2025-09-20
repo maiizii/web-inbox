@@ -455,55 +455,61 @@ export default function BlockEditorAuto({
   }
 
   /* ---------------- 分隔条拖动 ---------------- */
-  function startDividerDrag(e) {
-    if (!showPreview) return;
+const draggingDividerRef = useRef(false);
+const [draggingDivider, setDraggingDivider] = useState(false);
+
+function startDividerDrag(e) {
+  if (!showPreview) return;
+  e.preventDefault();
+  const container = splitContainerRef.current;
+  if (!container) return;
+  const rect = container.getBoundingClientRect();
+  dividerDragRef.current = { rect };
+  draggingDividerRef.current = true;
+  setDraggingDivider(true);
+  document.body.classList.add("editor-resizing");
+  window.addEventListener("mousemove", onDividerMove);
+  window.addEventListener("mouseup", stopDividerDrag);
+  window.addEventListener("touchmove", onDividerMove, { passive: false });
+  window.addEventListener("touchend", stopDividerDrag);
+}
+
+function onDividerMove(e) {
+  console.log('onDividerMove', draggingDividerRef.current, dividerDragRef.current);
+  if (!draggingDividerRef.current || !dividerDragRef.current) return;
+  let clientX, clientY;
+  if (e.touches && e.touches[0]) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
     e.preventDefault();
-    const container = splitContainerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    dividerDragRef.current = { rect };
-    setDraggingDivider(true);
-    document.body.classList.add("editor-resizing");
-    window.addEventListener("mousemove", onDividerMove);
-    window.addEventListener("mouseup", stopDividerDrag);
-    window.addEventListener("touchmove", onDividerMove, { passive: false });
-    window.addEventListener("touchend", stopDividerDrag);
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
   }
-  function onDividerMove(e) {
-    console.log('onDividerMove', draggingDivider, dividerDragRef.current); // 调试输出
-    if (!draggingDivider || !dividerDragRef.current) return;
-    let clientX, clientY;
-    if (e.touches && e.touches[0]) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-      e.preventDefault();
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-    const { rect } = dividerDragRef.current;
-    if (previewMode === "vertical") {
-      const ratio = (clientX - rect.left) / rect.width;
-      setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
-    } else {
+  const { rect } = dividerDragRef.current;
+  let ratio;
+  if (previewMode === "vertical") {
+    ratio = (clientX - rect.left) / rect.width;
+  } else {
     ratio = (clientY - rect.top) / rect.height;
-    }
-    ratio = clamp(ratio, MIN_RATIO, MAX_RATIO);
-    console.log('setSplitRatio', ratio); // 调试输出
-    setSplitRatio(ratio);
   }
-  function stopDividerDrag() {
-    if (!draggingDivider) return;
-    setDraggingDivider(false);
-    document.body.classList.remove("editor-resizing");
-    window.removeEventListener("mousemove", onDividerMove);
-    window.removeEventListener("mouseup", stopDividerDrag);
-    window.removeEventListener("touchmove", onDividerMove);
-    window.removeEventListener("touchend", stopDividerDrag);
-    const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
-    localStorage.setItem(key, String(splitRatio));
-    detectOverflow();
-  }
+  ratio = clamp(ratio, MIN_RATIO, MAX_RATIO);
+  setSplitRatio(ratio);
+}
+
+function stopDividerDrag() {
+  if (!draggingDividerRef.current) return;
+  draggingDividerRef.current = false;
+  setDraggingDivider(false);
+  document.body.classList.remove("editor-resizing");
+  window.removeEventListener("mousemove", onDividerMove);
+  window.removeEventListener("mouseup", stopDividerDrag);
+  window.removeEventListener("touchmove", onDividerMove);
+  window.removeEventListener("touchend", stopDividerDrag);
+  const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
+  localStorage.setItem(key, String(splitRatio));
+  detectOverflow();
+}
   function resetSplit() {
     setSplitRatio(0.5);
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
