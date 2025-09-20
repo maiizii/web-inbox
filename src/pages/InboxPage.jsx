@@ -49,7 +49,6 @@ export default function InboxPage() {
       const list = await apiListBlocks();
       setBlocks(list);
       if (!selectedId && list.length) setSelectedId(list[0].id);
-      // 每次重新加载都重置拖拽顺序
       setManualOrder(null);
     } catch (e) {
       toast.push(e.message || "加载失败", { type: "error" });
@@ -93,16 +92,27 @@ export default function InboxPage() {
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)));
   }
 
-  // 保存 block 内容时，最新编辑的 block 置顶，清除拖拽顺序
+  // 保存 block 内容时，最新编辑的 block 置顶，清除拖拽顺序，并将排序同步到后端
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
     setLastEditedBlockId(id);  // 标记刚编辑的 block
     setManualOrder(null);      // 清除手动顺序，进入最新编辑置顶模式
+
+    setBlocks(prev => {
+      const latestBlock = prev.find(b => b.id === id);
+      if (!latestBlock) return prev;
+      const rest = prev.filter(b => b.id !== id);
+      const newList = [latestBlock, ...rest];
+      // 顺序同步到后端
+      apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
+      return newList;
+    });
+
     return real;
   }
 
-  // 新建 block 时也置顶、清除拖拽顺序
+  // 新建 block 时也置顶、清除拖拽顺序，并同步排序到后端
   async function createEmptyBlock() {
     const optimistic = {
       id: "tmp-" + Date.now(),
@@ -122,6 +132,16 @@ export default function InboxPage() {
       setSelectedId(real.id);
       setLastEditedBlockId(real.id); // 新建后也置顶
       setManualOrder(null);          // 清除手动顺序，进入最新编辑置顶模式
+
+      // 保证新建排序也同步到后端
+      setBlocks(prev => {
+        const latestBlock = prev.find(b => b.id === real.id);
+        if (!latestBlock) return prev;
+        const rest = prev.filter(b => b.id !== real.id);
+        const newList = [latestBlock, ...rest];
+        apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
+        return newList;
+      });
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
@@ -160,7 +180,6 @@ export default function InboxPage() {
       if (from === -1 || to === -1) return prev;
       const [item] = list.splice(from, 1);
       list.splice(to, 0, item);
-      // 更新拖拽顺序
       setManualOrder(list.map(b => b.id));
       setLastEditedBlockId(null); // 清除最新编辑置顶模式
       return list;
