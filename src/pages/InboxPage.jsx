@@ -183,7 +183,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden rounded-lg bg-transparent">
+    <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
       <Sidebar
         blocks={sortedBlocks}
         selectedId={selectedId}
@@ -195,8 +195,9 @@ export default function InboxPage() {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        className="bg-white dark:bg-slate-800" // 左栏深色模式
       />
-      <div className="flex-1 min-h-0 rounded-lg overflow-hidden">
+      <div className="flex-1 min-h-0 rounded-lg overflow-hidden bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-2">
         <BlockEditorAuto
           block={selected}
           onChange={optimisticChange}
