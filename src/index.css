@@ -1,5 +1,5 @@
 /* ==========================================================================
-   NodeSeeker 仪表盘现代极简风格（全局+卡片+Tab+按钮+表单+状态色）
+   NodeSeeker 仪表盘风格美化（只美化，不动原架构及功能）
    ========================================================================== */
 
 @import "tailwindcss";
@@ -17,21 +17,13 @@ body {
 }
 
 /* ----------- 卡片 ----------- */
-.card {
+.card, .panel, .card-small, .list-item {
   background: #fff;
   border-radius: 15px;
   box-shadow: 0 6px 22px -8px rgba(60,80,130,0.09), 0 1.5px 4px rgba(60,80,130,0.03);
   border: 1.5px solid #ececf0;
   padding: 1.2rem 1.6rem;
   margin-bottom: 1.2rem;
-}
-.card-small {
-  background: #fff;
-  border-radius: 13px;
-  box-shadow: 0 2px 8px -4px rgba(60,80,130,0.07);
-  border: 1.2px solid #e6e8ee;
-  padding: 1rem 1.2rem;
-  margin-bottom: 1rem;
 }
 
 /* ----------- 顶部栏 ----------- */
@@ -52,7 +44,6 @@ body {
   font-size: 2.1rem;
   font-weight: 800;
   color: #21262b;
-  letter-spacing: 0.5px;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -87,6 +78,7 @@ body {
   background: #d93030;
 }
 
+/* ----------- 仪表盘状态 ----------- */
 .status-info {
   color: #3ac569;
   font-weight: 700;
@@ -269,6 +261,10 @@ body {
 }
 @media (max-width: 600px) {
   .header-bar { flex-direction: column; gap: 0.8rem; }
+}
+
+/* ----------- 保留原有按钮/输入/编辑器特性 ----------- */
+/* 可保留原 tailwind/功能性 class，不会影响原有事件和布局 */
 }
 
 /* ------------- 其他保留（编辑器/分隔条/调试等） ------------- */
