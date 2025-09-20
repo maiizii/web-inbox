@@ -9,7 +9,6 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
-  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { refreshUser, user } = useAuth();
@@ -22,7 +21,7 @@ export default function AuthPage() {
     setLoading(true);
     try {
       if (mode === "register") {
-        await apiRegister(email, password, name, inviteCode);
+        await apiRegister(email, password, inviteCode);
         toast.push("注册成功", { type: "success" });
         await apiLogin(email, password);
       } else {
@@ -46,16 +45,15 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
-          {/* Logo 替换文字，放大显示 */}
           <h1 className="mx-auto h-24">
             <img
-              src="https://img.686656.xyz/images/i/2025/09/20/68cea8557250f.png"
+              src="https://img.686656.xyz/images/i/2025/09/20/68ceb0f8dcda7.png"
               alt="Web Tips"
               className="h-full object-contain mx-auto"
             />
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {mode === "login" ? "登录到你的Web Tips" : "创建你的账号（需要邀请码）"}
+            {mode === "login" ? "登录到你的WEB TIPS" : "创建你的账号（需要邀请码）"}
           </p>
         </div>
 
@@ -111,26 +109,16 @@ export default function AuthPage() {
           </div>
 
           {mode === "register" && (
-            <>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">昵称（可选）</label>
-                <input
-                  className="input-modern"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">邀请码</label>
-                <input
-                  className="input-modern"
-                  required
-                  value={inviteCode}
-                  onChange={e => setInviteCode(e.target.value.trim())}
-                  placeholder="请输入邀请码"
-                />
-              </div>
-            </>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">邀请码</label>
+              <input
+                className="input-modern"
+                required
+                value={inviteCode}
+                onChange={e => setInviteCode(e.target.value.trim())}
+                placeholder="请输入邀请码"
+              />
+            </div>
           )}
 
           {error && (
