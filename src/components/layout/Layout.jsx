@@ -15,7 +15,7 @@ export default function Layout({ children, fullScreen = false }) {
         {children}
       </main>
       <footer className="py-4 text-center text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200/60 dark:border-slate-700/50">
-        Web Tips · Powered by Cloudflare Pages + D1 + KV
+        Web Tips · Powered by Cloudflare Pages + D1
       </footer>
     </div>
   );
