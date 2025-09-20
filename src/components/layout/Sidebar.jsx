@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus } from "lucide-react";
+import { Plus, Thumbtack, XCircle } from "lucide-react";
 
 export default function Sidebar({
   blocks,
@@ -11,7 +11,9 @@ export default function Sidebar({
   draggingId,
   onDragStart,
   onDragOver,
-  onDrop
+  onDrop,
+  onPin,          // 新增：置顶 block，参数是 block id
+  onUnpin,        // 新增：取消置顶 block，参数是 block id
 }) {
   return (
     <aside className="w-[15rem] shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 backdrop-blur flex flex-col">
@@ -30,7 +32,7 @@ export default function Sidebar({
       <div className="px-3 pt-3">
         <input
           className="input-modern w-full"
-            placeholder="搜索..."
+          placeholder="搜索..."
           value={query}
           onChange={e => onQueryChange(e.target.value)}
         />
@@ -46,6 +48,7 @@ export default function Sidebar({
           const isSel = b.id === selectedId;
           const isDragging = b.id === draggingId;
           const lastEdit = (b.updated_at || b.created_at || "").replace("T", " ").slice(5, 16);
+          const isPinned = !!b.pinned; // pinned 字段判断是否置顶
           return (
             <div
               key={b.id}
@@ -62,15 +65,35 @@ export default function Sidebar({
               `}
               onClick={() => onSelect && onSelect(b.id)}
             >
-              <div className="px-3 pt-2 pb-1">
-                <div className="font-medium truncate text-sm">
+              <div className="px-3 pt-2 pb-1 flex items-center gap-2">
+                <div className="font-medium truncate text-sm flex-1">
                   {derivedTitle}
                 </div>
-                <div className={`text-[10px] mt-1 ${
-                  isSel ? "text-white/80" : "text-slate-400 dark:text-slate-500"
-                }`}>
-                  最后编辑：{lastEdit}
+                <div className="flex gap-1 items-center">
+                  {!isPinned && (
+                    <button
+                      className="btn-icon"
+                      title="置顶"
+                      onClick={e => { e.stopPropagation(); onPin && onPin(b.id); }}
+                    >
+                      <Thumbtack size={16} className="text-slate-500 hover:text-indigo-500" />
+                    </button>
+                  )}
+                  {isPinned && (
+                    <button
+                      className="btn-icon"
+                      title="取消置顶"
+                      onClick={e => { e.stopPropagation(); onUnpin && onUnpin(b.id); }}
+                    >
+                      <XCircle size={16} className="text-indigo-500 hover:text-slate-500" />
+                    </button>
+                  )}
                 </div>
+              </div>
+              <div className={`text-[10px] mt-1 px-3 ${
+                isSel ? "text-white/80" : "text-slate-400 dark:text-slate-500"
+              }`}>
+                最后编辑：{lastEdit}
               </div>
             </div>
           );
