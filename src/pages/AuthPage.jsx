@@ -55,7 +55,7 @@ export default function AuthPage() {
             />
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {mode === "login" ? "登录到你的知识小片段" : "创建你的账号（需要邀请码）"}
+            {mode === "login" ? "登录到你的Web Tips" : "创建你的账号（需要邀请码）"}
           </p>
         </div>
 
