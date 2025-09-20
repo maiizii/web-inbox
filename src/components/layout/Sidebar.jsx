@@ -14,11 +14,11 @@ export default function Sidebar({
   onDrop
 }) {
   return (
-    <aside className="w-[15rem] shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 backdrop-blur flex flex-col">
+    <aside className="w-72 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 backdrop-blur-md flex flex-col">
       <div className="p-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700">
         <button
           onClick={onCreate}
-          className="btn-primary-modern flex items-center gap-1 !px-3 !py-2 text-sm"
+          className="flex items-center gap-1 !px-3 !py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
         >
           <Plus size={16} />
           新建
@@ -29,8 +29,8 @@ export default function Sidebar({
       </div>
       <div className="px-3 pt-3">
         <input
-          className="input-modern w-full"
-            placeholder="搜索..."
+          className="w-full px-2 py-1 text-sm rounded-md border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 text-gray-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder="搜索..."
           value={query}
           onChange={e => onQueryChange(e.target.value)}
         />
@@ -52,10 +52,10 @@ export default function Sidebar({
               draggable
               onDragStart={() => onDragStart && onDragStart(b.id)}
               onDragOver={e => onDragOver && onDragOver(e, b.id)}
-              className={`group rounded-lg mb-1 border text-left relative transition cursor-pointer
+              className={`group rounded-lg mb-1 border text-left relative transition-all cursor-pointer
                 ${
                   isSel
-                    ? "bg-gradient-to-r from-indigo-500/90 to-blue-500/90 text-white border-transparent shadow"
+                    ? "bg-gradient-to-r from-indigo-500/90 to-blue-500/90 text-white border-transparent shadow-lg"
                     : "bg-white/70 dark:bg-slate-800/60 hover:bg-white dark:hover:bg-slate-800 border-slate-200/70 dark:border-slate-700/60"
                 }
                 ${isDragging ? "opacity-60 ring-2 ring-indigo-400" : ""}
