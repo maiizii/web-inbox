@@ -376,12 +376,12 @@ a:hover{color:var(--color-primary-hover);}
 .split-divider{
   position:relative;flex:0 0 auto;
   background:linear-gradient(180deg,#e2e8f0,#cbd5e1);
-  transition:background 120ms ease;z-index:50;
+  transition:background 120ms ease;z-index:99;
   pointer-events:auto;
 }
 .dark .split-divider{background:linear-gradient(180deg,#334155,#1e293b);}
-.split-vertical{width:14px;cursor:col-resize;}
-.split-horizontal{height:14px;cursor:row-resize;}
+.split-vertical{width:16px;cursor:col-resize;}
+.split-horizontal{height:16px;cursor:row-resize;}
 .split-divider::after{
   content:"";position:absolute;inset:0;background:transparent;
   transition:background 120ms ease;
