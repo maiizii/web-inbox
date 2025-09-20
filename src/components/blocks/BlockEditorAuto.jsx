@@ -760,7 +760,7 @@ export default function BlockEditorAuto({
             className={`split-divider ${
               previewMode === "vertical" ? "split-vertical" : "split-horizontal"
             } ${draggingDivider ? "dragging" : ""}`}
-            onMouseDown={console.log('divider down'); startDividerDrag}
+            onMouseDown={e => {console.log('divider down'); startDividerDrag(e);}}
             onTouchStart={startDividerDrag}
             onDoubleClick={resetSplit}
             title="拖动调整比例，双击恢复 50%"
