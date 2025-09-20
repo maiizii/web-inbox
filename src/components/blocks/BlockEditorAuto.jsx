@@ -10,12 +10,6 @@ const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
 
-/**
- * BlockEditorAuto (final bugfix: 
- * 1. 编辑区始终显示，隐藏预览时只隐藏分隔条和预览区；
- * 2. 行号滚动始终同步textarea，不依赖按钮；
- * 3. 分屏比例用 flexBasis，编辑区高度/宽度切换无bug)
- */
 export default function BlockEditorAuto({
   block,
   onChange,
@@ -51,7 +45,6 @@ export default function BlockEditorAuto({
   const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
-  // selection / focus
   const selectionRef = useRef({ start: null, end: null });
   const userManuallyBlurredRef = useRef(false);
   const shouldRestoreFocusRef = useRef(false);
@@ -271,7 +264,6 @@ export default function BlockEditorAuto({
   }, []);
   useEffect(() => { syncLineNumbersPadding(); }, [content]);
 
-  // 行号始终跟随 textarea 滚动
   useEffect(() => {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
@@ -531,7 +523,6 @@ export default function BlockEditorAuto({
   }
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // 关键：编辑区始终显示，分隔条和预览区受 showPreview 控制
   return (
     <div
       className="h-full flex flex-col overflow-hidden"
@@ -563,30 +554,35 @@ export default function BlockEditorAuto({
           >
             <Redo2 size={16} />
           </button>
-          <button
-            type="button"
-            onClick={() => setSyncScrollEnabled(v => !v)}
-            className="btn-outline-modern !px-2.5 !py-1.5"
-            title="同步滚动开/关"
-          >
-            {syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}
-          </button>
+          {/* 仅在显示预览时显示同步滚动、预览布局按钮 */}
+          {showPreview && (
+            <>
+              <button
+                type="button"
+                onClick={() => setSyncScrollEnabled(v => !v)}
+                className="btn-outline-modern !px-2.5 !py-1.5"
+                title="同步滚动开/关"
+              >
+                {syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))
+                }
+                className="btn-outline-modern !px-3 !py-1.5"
+                title="切换预览布局"
+              >
+                {previewMode === "vertical" ? "上下预览" : "左右预览"}
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setShowPreview(p => !p)}
             className="btn-outline-modern !px-3 !py-1.5"
           >
             {showPreview ? "隐藏预览" : "显示预览"}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))
-            }
-            className="btn-outline-modern !px-3 !py-1.5"
-            title="切换预览布局"
-          >
-            {previewMode === "vertical" ? "上下预览" : "左右预览"}
           </button>
           <div className="text-slate-400 select-none min-w-[64px] text-right">
             {saving
@@ -609,7 +605,6 @@ export default function BlockEditorAuto({
           </button>
         </div>
       </div>
-
       {/* 分屏容器，编辑区始终显示，分隔条和预览区受 showPreview 控制 */}
       <div
         ref={splitContainerRef}
