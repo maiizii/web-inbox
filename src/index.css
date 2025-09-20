@@ -380,8 +380,8 @@ a:hover{color:var(--color-primary-hover);}
   pointer-events:auto;
 }
 .dark .split-divider{background:linear-gradient(180deg,#334155,#1e293b);}
-.split-vertical{width:16px;cursor:col-resize;}
-.split-horizontal{height:16px;cursor:row-resize;}
+.split-vertical{width:12px;cursor:col-resize;}
+.split-horizontal{height:12px;cursor:row-resize;}
 .split-divider::after{
   content:"";position:absolute;inset:0;background:transparent;
   transition:background 120ms ease;
