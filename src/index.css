@@ -1,17 +1,22 @@
-/* src/index.css */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* src/index.css — Tailwind v4 完整版，可直接整文件覆盖 */
 
-/* 全局基底 */
-html, body, #root {
-  @apply min-h-screen;
-}
+/* ------- Tailwind v4 核心导入 ------- */
+@import "tailwindcss";
+
+/* 若项目启用了官方插件（typography/forms），v4 推荐在 CSS 里声明 */
+@plugin "@tailwindcss/typography";
+@plugin "@tailwindcss/forms";
+
+/* ------- 全局基底 ------- */
+html, body, #root { min-height: 100vh; }
 body {
-  @apply bg-gray-50 text-gray-900 dark:bg-slate-900 dark:text-slate-100;
+  @apply bg-gray-50 text-gray-900;
+}
+.dark body {
+  @apply bg-slate-900 text-slate-100;
 }
 
-/* 顶栏/页脚/面板头部的统一底色与边框（浅/深） */
+/* ------- 通用表面（顶栏、底栏、右侧容器头部等） ------- */
 .app-surface {
   @apply bg-white border border-slate-200;
 }
@@ -19,46 +24,39 @@ body {
   @apply bg-slate-800 border-slate-700;
 }
 
-/* 右侧编辑/预览容器的滚动区底色（深色更深一层） */
-.preview-scroll { @apply bg-white dark:bg-slate-900; }
-.editor-scroll  { @apply bg-white dark:bg-slate-900; }
+/* ------- 自定义按钮体系（与旧代码类名兼容） ------- */
+.btn-outline-modern {
+  @apply inline-flex items-center gap-1 border border-slate-300 text-slate-700 px-2.5 py-1.5 rounded-md transition;
+}
+.btn-outline-modern:hover {
+  @apply bg-slate-100;
+}
+.dark .btn-outline-modern {
+  @apply border-slate-600 text-slate-200;
+}
+.dark .btn-outline-modern:hover {
+  @apply bg-slate-700;
+}
+.btn-danger-modern {
+  @apply inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-red-600 text-white transition;
+}
+.btn-danger-modern:hover { @apply bg-red-700; }
 
-/* 预览正文——你看不见文字就是这里没压过来，直接强制白字 */
-.preview-content {
-  color: rgb(30 41 59);           /* slate-800 */
-}
-.dark .preview-content {
-  color: rgb(241 245 249);        /* slate-50 近似，足够亮 */
-}
-/* 预览内的常见元素在深色下的对比（可继续扩展 markdown 规则） */
-.dark .preview-content a       { color: rgb(96 165 250); }  /* 蓝 */
-.dark .preview-content code    { color: rgb(248 250 252); background: rgb(51 65 85); padding: 0.1rem 0.25rem; border-radius: 0.25rem; }
-.dark .preview-content pre     { background: rgb(30 41 59); color: rgb(241 245 249); padding: .75rem; border-radius: .5rem; overflow: auto; }
-.dark .preview-content hr      { border-color: rgb(71 85 105); opacity: .6; }
-.dark .preview-content blockquote { color: rgb(226 232 240); border-left: 3px solid rgb(71 85 105); padding-left: .75rem; }
+/* ------- 滚动条 ------- */
+.custom-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.custom-scroll::-webkit-scrollbar-thumb { background-color: rgba(100,116,139,.6); border-radius: 8px; }
+.custom-scroll::-webkit-scrollbar-track { background-color: transparent; }
+.dark .custom-scroll::-webkit-scrollbar-thumb { background-color: rgba(148,163,184,.5); }
 
-/* 文本区（textarea）深色 */
-.editor-textarea {
-  @apply bg-white text-slate-900 dark:bg-slate-800 dark:text-slate-100;
-}
+/* ------- 分割条（编辑/预览之间） ------- */
+.split-divider { @apply bg-slate-200; }
+.split-divider:hover { @apply bg-slate-300; }
+.dark .split-divider { @apply bg-slate-700; }
+.dark .split-divider:hover { @apply bg-slate-600; }
 
-/* 行号栏深色 */
-.editor-line-numbers {
-  @apply bg-slate-50 text-slate-400 dark:bg-slate-800 dark:text-slate-500;
-}
-
-/* 分割条在深色下对比 */
-.split-divider {
-  @apply bg-slate-200 hover:bg-slate-300;
-}
-.dark .split-divider {
-  @apply bg-slate-700 hover:bg-slate-600;
-}
-
-/* Sidebar 列表卡片：选中态与非选中态 */
+/* ------- 侧栏卡片（兼容旧类名） ------- */
 .sidebar-card {
-  @apply rounded-lg border transition text-left cursor-pointer;
-  @apply bg-white border-slate-200 hover:bg-slate-100;
+  @apply rounded-lg border text-left cursor-pointer transition bg-white border-slate-200 hover:bg-slate-100;
 }
 .dark .sidebar-card {
   @apply bg-slate-800 border-slate-700 hover:bg-slate-700;
@@ -66,24 +64,74 @@ body {
 .sidebar-card--active {
   @apply bg-gradient-to-r from-indigo-500 to-blue-500 text-white border-transparent shadow-lg;
 }
-.sidebar-card__time {
-  @apply text-[10px] mt-1 text-slate-400;
+.sidebar-card__time { @apply text-[10px] mt-1 text-slate-400; }
+.sidebar-card--active .sidebar-card__time { color: rgba(255,255,255,.85); }
+
+/* ------- 编辑器（文本区+行号） ------- */
+.editor-scroll { @apply h-full bg-white; }
+.dark .editor-scroll { @apply bg-slate-900; }
+
+.editor-textarea {
+  @apply w-full h-full resize-none outline-none font-mono text-sm leading-[1.5] p-3 bg-white text-slate-900;
 }
-.sidebar-card--active .sidebar-card__time {
-  color: rgba(255,255,255,.85);
+.dark .editor-textarea {
+  @apply bg-slate-800 text-slate-100;
 }
 
-/* 顶部工具条按钮的对比度（深色下） */
-.btn-outline-modern {
-  @apply border border-slate-300 text-slate-700 hover:bg-slate-100;
-}
-.dark .btn-outline-modern {
-  @apply border-slate-600 text-slate-200 hover:bg-slate-700;
-}
-.btn-danger-modern { @apply bg-red-600 text-white hover:bg-red-700; }
+/* 行号栏与其内层（兼容旧类名） */
+.editor-line-numbers { @apply bg-slate-50 text-slate-400 select-none; }
+.dark .editor-line-numbers { @apply bg-slate-800 text-slate-500; }
+.editor-line-numbers-inner { @apply p-2; }
 
-/* 自定义滚动条在深色下的轨道/滑块 */
-.custom-scroll::-webkit-scrollbar{ width:10px;height:10px;}
-.custom-scroll::-webkit-scrollbar-thumb{ background-color: rgba(100,116,139,.6); border-radius: 8px;}
-.custom-scroll::-webkit-scrollbar-track{ background-color: transparent;}
-.dark .custom-scroll::-webkit-scrollbar-thumb{ background-color: rgba(148,163,184,.5); }
+/* ------- 预览区 ------- */
+.preview-scroll { @apply h-full bg-white; }
+.dark .preview-scroll { @apply bg-slate-900; }
+
+/* 关键：预览正文在深色下必须浅色 */
+.preview-content { color: rgb(30 41 59); }           /* slate-800 */
+.dark .preview-content { color: rgb(241 245 249); }  /* slate-50 近似 */
+
+/* 预览常见元素在暗色的对比度 */
+.dark .preview-content a { color: rgb(96 165 250); } /* 蓝 */
+.dark .preview-content code {
+  color: rgb(248 250 252);
+  background: rgb(51 65 85);
+  padding: 0.1rem 0.25rem;
+  border-radius: 0.25rem;
+}
+.dark .preview-content pre {
+  background: rgb(30 41 59);
+  color: rgb(241 245 249);
+  padding: .75rem;
+  border-radius: .5rem;
+  overflow: auto;
+}
+.dark .preview-content hr { border-color: rgb(71 85 105); opacity: .6; }
+.dark .preview-content blockquote {
+  color: rgb(226 232 240);
+  border-left: 3px solid rgb(71 85 105);
+  padding-left: .75rem;
+}
+
+/* 预览里粘贴图片的默认样式（保留旧行为） */
+.preview-content .preview-img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: .5rem 0;
+}
+
+/* ------- 表单/输入（搜索框等） ------- */
+.input-modern { @apply w-full px-2 py-1 text-sm rounded-md border border-slate-300 bg-white text-slate-900; }
+.input-modern::placeholder { @apply text-slate-400; }
+.dark .input-modern { @apply border-slate-700 bg-slate-800 text-slate-100; }
+.dark .input-modern::placeholder { @apply text-slate-500; }
+
+/* ------- 工具类兼容（历史项目里用到的一些自定义类） ------- */
+.shadow-card { box-shadow: 0 8px 30px rgba(0,0,0,.06); }
+.rounded-xl-2 { border-radius: 1rem; } /* 兼容旧 class */
+.no-v-scroll { overflow-y: hidden !important; }
+
+/* ------- Prose（若编辑器切到 markdown 渲染时可用） ------- */
+.prose-dark { }
+.dark .prose-dark { @apply prose-invert; }
