@@ -72,20 +72,50 @@ export default function Sidebar({
                 <div className="flex gap-1 items-center">
                   {!isPinned && (
                     <button
-                      className="btn-icon"
+                      className="pin-btn group-hover:bg-slate-100"
                       title="置顶"
+                      style={{
+                        padding: 0,
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
                       onClick={e => { e.stopPropagation(); onPin && onPin(b.id); }}
                     >
-                      <Pin size={16} className="text-slate-500 hover:text-indigo-500" />
+                      <Pin
+                        size={16}
+                        strokeWidth={2}
+                        className="text-slate-300 group-hover:text-indigo-500 transition"
+                        style={{ opacity: 0.7 }}
+                      />
                     </button>
                   )}
                   {isPinned && (
                     <button
-                      className="btn-icon"
+                      className="pin-btn group-hover:bg-slate-100"
                       title="取消置顶"
+                      style={{
+                        padding: 0,
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
                       onClick={e => { e.stopPropagation(); onUnpin && onUnpin(b.id); }}
                     >
-                      <XCircle size={16} className="text-indigo-500 hover:text-slate-500" />
+                      <XCircle
+                        size={16}
+                        strokeWidth={2}
+                        className="text-indigo-300 group-hover:text-indigo-500 transition"
+                        style={{ opacity: 0.8 }}
+                      />
                     </button>
                   )}
                 </div>
@@ -104,6 +134,17 @@ export default function Sidebar({
           </div>
         )}
       </div>
+      <style>{`
+        .pin-btn {
+          transition: background 0.18s, box-shadow 0.18s;
+        }
+        .pin-btn:hover svg {
+          opacity: 1 !important;
+        }
+        .pin-btn:active {
+          box-shadow: 0 1px 3px rgba(99,102,241,0.18);
+        }
+      `}</style>
     </aside>
   );
 }
