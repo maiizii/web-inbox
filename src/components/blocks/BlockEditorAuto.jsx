@@ -65,6 +65,7 @@ export default function BlockEditorAuto({
 
   // divider drag
   const dividerDragRef = useRef(null);
+  const draggingDividerRef = useRef(false); // 用于拖拽逻辑
 
   // history per block
   const historyStoreRef = useRef(new Map());
@@ -455,61 +456,58 @@ export default function BlockEditorAuto({
   }
 
   /* ---------------- 分隔条拖动 ---------------- */
-const draggingDividerRef = useRef(false);
-const [draggingDivider, setDraggingDivider] = useState(false);
-
-function startDividerDrag(e) {
-  if (!showPreview) return;
-  e.preventDefault();
-  const container = splitContainerRef.current;
-  if (!container) return;
-  const rect = container.getBoundingClientRect();
-  dividerDragRef.current = { rect };
-  draggingDividerRef.current = true;
-  setDraggingDivider(true);
-  document.body.classList.add("editor-resizing");
-  window.addEventListener("mousemove", onDividerMove);
-  window.addEventListener("mouseup", stopDividerDrag);
-  window.addEventListener("touchmove", onDividerMove, { passive: false });
-  window.addEventListener("touchend", stopDividerDrag);
-}
-
-function onDividerMove(e) {
-  console.log('onDividerMove', draggingDividerRef.current, dividerDragRef.current);
-  if (!draggingDividerRef.current || !dividerDragRef.current) return;
-  let clientX, clientY;
-  if (e.touches && e.touches[0]) {
-    clientX = e.touches[0].clientX;
-    clientY = e.touches[0].clientY;
+  function startDividerDrag(e) {
+    if (!showPreview) return;
     e.preventDefault();
-  } else {
-    clientX = e.clientX;
-    clientY = e.clientY;
+    const container = splitContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    dividerDragRef.current = { rect };
+    draggingDividerRef.current = true;
+    setDraggingDivider(true);
+    document.body.classList.add("editor-resizing");
+    window.addEventListener("mousemove", onDividerMove);
+    window.addEventListener("mouseup", stopDividerDrag);
+    window.addEventListener("touchmove", onDividerMove, { passive: false });
+    window.addEventListener("touchend", stopDividerDrag);
   }
-  const { rect } = dividerDragRef.current;
-  let ratio;
-  if (previewMode === "vertical") {
-    ratio = (clientX - rect.left) / rect.width;
-  } else {
-    ratio = (clientY - rect.top) / rect.height;
-  }
-  ratio = clamp(ratio, MIN_RATIO, MAX_RATIO);
-  setSplitRatio(ratio);
-}
 
-function stopDividerDrag() {
-  if (!draggingDividerRef.current) return;
-  draggingDividerRef.current = false;
-  setDraggingDivider(false);
-  document.body.classList.remove("editor-resizing");
-  window.removeEventListener("mousemove", onDividerMove);
-  window.removeEventListener("mouseup", stopDividerDrag);
-  window.removeEventListener("touchmove", onDividerMove);
-  window.removeEventListener("touchend", stopDividerDrag);
-  const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
-  localStorage.setItem(key, String(splitRatio));
-  detectOverflow();
-}
+  function onDividerMove(e) {
+    // 用 draggingDividerRef 判断拖拽状态
+    if (!draggingDividerRef.current || !dividerDragRef.current) return;
+    let clientX, clientY;
+    if (e.touches && e.touches[0]) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+      e.preventDefault();
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    const { rect } = dividerDragRef.current;
+    let ratio;
+    if (previewMode === "vertical") {
+      ratio = (clientX - rect.left) / rect.width;
+    } else {
+      ratio = (clientY - rect.top) / rect.height;
+    }
+    ratio = clamp(ratio, MIN_RATIO, MAX_RATIO);
+    setSplitRatio(ratio);
+  }
+
+  function stopDividerDrag() {
+    if (!draggingDividerRef.current) return;
+    draggingDividerRef.current = false;
+    setDraggingDivider(false);
+    document.body.classList.remove("editor-resizing");
+    window.removeEventListener("mousemove", onDividerMove);
+    window.removeEventListener("mouseup", stopDividerDrag);
+    window.removeEventListener("touchmove", onDividerMove);
+    window.removeEventListener("touchend", stopDividerDrag);
+    const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
+    localStorage.setItem(key, String(splitRatio));
+    detectOverflow();
+  }
   function resetSplit() {
     setSplitRatio(0.5);
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
@@ -769,7 +767,7 @@ function stopDividerDrag() {
             className={`split-divider ${
               previewMode === "vertical" ? "split-vertical" : "split-horizontal"
             } ${draggingDivider ? "dragging" : ""}`}
-            onMouseDown={e => {console.log('divider down'); startDividerDrag(e);}}
+            onMouseDown={startDividerDrag}
             onTouchStart={startDividerDrag}
             onDoubleClick={resetSplit}
             title="拖动调整比例，双击恢复 50%"
