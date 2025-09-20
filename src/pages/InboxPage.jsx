@@ -13,19 +13,19 @@ import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
 
 function sortBlocksWithLatestOnTop(blocks, latestBlockId) {
   if (!latestBlockId) return blocks;
-  const hit = blocks.find(b => b.id === latestBlockId);
-  if (!hit) return blocks;
-  const tMax = Math.max(
+  const latestBlock = blocks.find(b => b.id === latestBlockId);
+  if (!latestBlock) return blocks;
+  const latestEditTime = Math.max(
     ...blocks.map(b =>
       new Date(b.updated_at || b.created_at || "1970-01-01").getTime()
     )
   );
-  const tHit = new Date(
-    hit.updated_at || hit.created_at || "1970-01-01"
+  const blockEditTime = new Date(
+    latestBlock.updated_at || latestBlock.created_at || "1970-01-01"
   ).getTime();
-  if (tHit === tMax) {
+  if (blockEditTime === latestEditTime) {
     const rest = blocks.filter(b => b.id !== latestBlockId);
-    return [hit, ...rest];
+    return [latestBlock, ...rest];
   }
   return blocks;
 }
@@ -53,27 +53,24 @@ export default function InboxPage() {
       setLoading(false);
     }
   }
-  useEffect(() => {
-    loadBlocks();
-  }, []);
 
-  const filtered = useMemo(() => {
+  useEffect(() => { loadBlocks(); }, []);
+
+  const filteredBlocks = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return blocks;
     return blocks.filter(b => (b.content || "").toLowerCase().includes(kw));
   }, [blocks, q]);
 
-  const sorted = useMemo(() => {
-    let list = filtered;
+  const sortedBlocks = useMemo(() => {
+    let list = filteredBlocks;
     if (manualOrder && manualOrder.length === list.length) {
-      list = manualOrder
-        .map(id => list.find(b => b.id === id))
-        .filter(Boolean);
+      list = manualOrder.map(id => list.find(b => b.id === id)).filter(Boolean);
     } else if (lastEditedBlockId) {
       list = sortBlocksWithLatestOnTop(list, lastEditedBlockId);
     }
     return list;
-  }, [filtered, manualOrder, lastEditedBlockId]);
+  }, [filteredBlocks, manualOrder, lastEditedBlockId]);
 
   const selected = useMemo(
     () => blocks.find(b => b.id === selectedId) || null,
@@ -91,19 +88,19 @@ export default function InboxPage() {
     setManualOrder(null);
 
     setBlocks(prev => {
-      const hit = prev.find(b => b.id === id);
-      if (!hit) return prev;
+      const latestBlock = prev.find(b => b.id === id);
+      if (!latestBlock) return prev;
       const rest = prev.filter(b => b.id !== id);
-      const next = [hit, ...rest];
-      apiReorderBlocks(next.map((b, i) => ({ id: b.id, position: i + 1 })));
-      return next;
+      const newList = [latestBlock, ...rest];
+      apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
+      return newList;
     });
 
     return real;
   }
 
   async function createEmptyBlock() {
-    const tmp = {
+    const optimistic = {
       id: "tmp-" + Date.now(),
       content: "",
       created_at: new Date().toISOString(),
@@ -111,53 +108,50 @@ export default function InboxPage() {
       position: (blocks[blocks.length - 1]?.position || blocks.length) + 1,
       optimistic: true
     };
-    setBlocks(prev => [tmp, ...prev]);
-    setSelectedId(tmp.id);
+    setBlocks(prev => [optimistic, ...prev]);
+    setSelectedId(optimistic.id);
     try {
       const real = await apiCreateBlock("");
       setBlocks(prev =>
-        prev.map(b => (b.id === tmp.id ? { ...b, ...real, optimistic: false } : b))
+        prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
       );
       setSelectedId(real.id);
       setLastEditedBlockId(real.id);
       setManualOrder(null);
 
       setBlocks(prev => {
-        const hit = prev.find(b => b.id === real.id);
-        if (!hit) return prev;
+        const latestBlock = prev.find(b => b.id === real.id);
+        if (!latestBlock) return prev;
         const rest = prev.filter(b => b.id !== real.id);
-        const next = [hit, ...rest];
-        apiReorderBlocks(next.map((b, i) => ({ id: b.id, position: i + 1 })));
-        return next;
+        const newList = [latestBlock, ...rest];
+        apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
+        return newList;
       });
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
-      setBlocks(prev => prev.filter(b => b.id !== tmp.id));
+      setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
     }
   }
 
   async function deleteBlock(id) {
-    const snap = blocks;
+    const snapshot = blocks;
     setBlocks(prev => prev.filter(b => b.id !== id));
     try {
       await apiDeleteBlock(id);
       toast.push("已删除", { type: "success" });
       if (selectedId === id) {
-        const remain = snap.filter(b => b.id !== id);
+        const remain = snapshot.filter(b => b.id !== id);
         setSelectedId(remain.length ? remain[0].id : null);
       }
       if (lastEditedBlockId === id) setLastEditedBlockId(null);
       if (manualOrder) setManualOrder(manualOrder.filter(i => i !== id));
     } catch (e) {
       toast.push(e.message || "删除失败", { type: "error" });
-      setBlocks(snap);
+      setBlocks(snapshot);
     }
   }
 
-  function onDragStart(id) {
-    setDraggingId(id);
-  }
-
+  function onDragStart(id) { setDraggingId(id); }
   function onDragOver(e, overId) {
     e.preventDefault();
     if (!draggingId || draggingId === overId) return;
@@ -173,7 +167,6 @@ export default function InboxPage() {
       return list;
     });
   }
-
   async function onDrop() {
     if (!draggingId) return;
     const order = blocks.map((b, i) => ({ id: b.id, position: i + 1 }));
@@ -189,9 +182,9 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden rounded-lg gap-2">
+    <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
       <Sidebar
-        blocks={sorted}
+        blocks={sortedBlocks}
         selectedId={selectedId}
         onSelect={setSelectedId}
         onCreate={createEmptyBlock}
@@ -201,8 +194,9 @@ export default function InboxPage() {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        className="bg-white dark:bg-slate-800"
       />
-      <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface">
+      <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
         <BlockEditorAuto
           block={selected}
           onChange={optimisticChange}
