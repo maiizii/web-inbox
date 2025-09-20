@@ -1,6 +1,7 @@
 // src/components/layout/Sidebar.jsx
 import React from "react";
 import { Plus } from "lucide-react";
+import { useTheme } from "../../context/ThemeContext.jsx";
 
 export default function Sidebar({
   blocks,
@@ -14,11 +15,26 @@ export default function Sidebar({
   onDragOver,
   onDrop
 }) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
+  // 深色规范：外层缝隙=50%灰，内部块=30%灰，未选中卡片=更浅一点
+  const GAP_BG = isDark ? "#808080" : "#ffffff";
+  const BOX_BG = isDark ? "#4d4d4d" : "#ffffff";
+  const CARD_BG = isDark ? "#6a6a6a" : "#ffffff";
+  const CARD_HOVER = isDark ? "#767676" : "#f1f5f9";
+  const BORDER = isDark ? "#5e5e5e" : "#e2e8f0";
+
   return (
-    // 外层：浅色=白；深色=50%灰，作为“缝隙/留白”底色
-    <aside className="w-72 shrink-0 rounded-lg overflow-hidden border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-[#808080] flex flex-col">
-      {/* 工具条：块内底色 30% 灰 */}
-      <div className="p-2 bg-white dark:bg-[#4d4d4d] border-b border-slate-200 dark:border-slate-700">
+    <aside
+      className="w-72 shrink-0 rounded-lg overflow-hidden border-r border-slate-200 dark:border-slate-700 flex flex-col"
+      style={{ backgroundColor: GAP_BG }}
+    >
+      {/* 顶部工具条：30%灰 */}
+      <div
+        className="p-2 border-b border-slate-200 dark:border-slate-700"
+        style={{ backgroundColor: BOX_BG }}
+      >
         <div className="flex items-center gap-2">
           <button
             onClick={onCreate}
@@ -27,14 +43,14 @@ export default function Sidebar({
             <Plus size={16} />
             新建
           </button>
-          <div className="text-[11px] text-slate-500 dark:text-slate-300 ml-auto">
+          <div className="text-[11px] text-slate-500 dark:text-slate-200 ml-auto">
             可拖拽排序
           </div>
         </div>
       </div>
 
-      {/* 搜索区：块内底色 30% 灰 */}
-      <div className="px-3 pt-2 pb-2 bg-white dark:bg-[#4d4d4d]">
+      {/* 搜索区：30%灰 */}
+      <div className="px-3 pt-2 pb-2" style={{ backgroundColor: BOX_BG }}>
         <input
           className="input-modern"
           placeholder="搜索..."
@@ -43,9 +59,10 @@ export default function Sidebar({
         />
       </div>
 
-      {/* 列表容器：块内底色 30% 灰；与工具条之间的“缝隙”由外层 50% 灰承接 */}
+      {/* 列表容器：30%灰 */}
       <div
-        className="flex-1 overflow-auto custom-scroll px-2 pb-4 mt-2 bg-white dark:bg-[#4d4d4d]"
+        className="flex-1 overflow-auto custom-scroll px-2 pb-4 mt-2"
+        style={{ backgroundColor: BOX_BG }}
         onDragOver={e => e.preventDefault()}
         onDrop={onDrop}
       >
@@ -59,12 +76,11 @@ export default function Sidebar({
             .slice(5, 16);
 
           const base =
-            "group rounded-md mb-1 border text-left relative transition-colors select-none cursor-pointer";
-          const state = isSel
-            ? // 选中：固定渐变，不随 hover 改色
-              "bg-gradient-to-r from-indigo-500/90 to-blue-500/90 text-white border-transparent shadow-lg hover:!bg-transparent"
-            : // 未选中：深色下更浅 (#6a6a6a)，悬停再浅一点；与 30% 灰容器有明确层级
-              "bg-white dark:bg-[#6a6a6a] hover:bg-slate-100 dark:hover:bg-[#767676] border-slate-200/70 dark:border-[#5e5e5e]";
+            "group rounded-md mb-1 text-left relative transition-colors select-none cursor-pointer border";
+          const selCls =
+            "bg-gradient-to-r from-indigo-500/90 to-blue-500/90 text-white border-transparent shadow-lg";
+          const unselCls =
+            "hover:bg-slate-100 dark:hover:brightness-110";
 
           return (
             <div
@@ -72,9 +88,21 @@ export default function Sidebar({
               draggable
               onDragStart={() => onDragStart && onDragStart(b.id)}
               onDragOver={e => onDragOver && onDragOver(e, b.id)}
-              className={`${base} ${state} ${
+              className={`${base} ${isSel ? selCls : unselCls} ${
                 isDragging ? "opacity-60 ring-2 ring-indigo-400" : ""
               }`}
+              // 选中卡片固定渐变；未选中卡片用更浅底色，并保证边框区分
+              style={
+                isSel
+                  ? { }
+                  : { backgroundColor: CARD_BG, borderColor: BORDER }
+              }
+              onMouseEnter={e => {
+                if (!isSel) e.currentTarget.style.backgroundColor = CARD_HOVER;
+              }}
+              onMouseLeave={e => {
+                if (!isSel) e.currentTarget.style.backgroundColor = CARD_BG;
+              }}
               onClick={() => onSelect && onSelect(b.id)}
             >
               <div className="px-3 pt-2 pb-1">
