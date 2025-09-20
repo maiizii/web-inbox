@@ -1,86 +1,65 @@
-import React from "react";
-import { Plus } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import BlockList from "../blocks/BlockList.jsx";
+
+/**
+ * Sidebar
+ * 负责左侧 block 列表排序逻辑和拖拽/编辑排序切换。
+ * 1. 默认按时间降序排序（block.updatedAt或createdAt）。
+ * 2. 拖拽排序后，手动排序优先（manualOrder）。
+ * 3. 一旦有block内容编辑/new，清空manualOrder并按最新时间排序。
+ */
 
 export default function Sidebar({
-  blocks,
+  blocks, // [{id, title, updatedAt, createdAt, ...}]
   selectedId,
   onSelect,
-  onCreate,
-  query,
-  onQueryChange,
-  draggingId,
-  onDragStart,
-  onDragOver,
-  onDrop
+  onDelete,
+  onBlockEdit, // block编辑/新建时调用
 }) {
+  // manualOrder: null 或 [blockId, ...]，手动排序优先
+  const [manualOrder, setManualOrder] = useState(null);
+
+  // 自动切换排序逻辑：只要有block编辑或新建，重置manualOrder为null
+  useEffect(() => {
+    // blocks每次更新时，检查是否有block.updatedAt比当前列表顺序更靠前
+    // 或新建block（长度变化）
+    if (!manualOrder || manualOrder.length !== blocks.length) {
+      setManualOrder(null);
+      return;
+    }
+    // 如果有block的updatedAt发生变化（即手动排序已失效），重置
+    const sortedByTime = [...blocks].sort((a, b) => {
+      const timeA = a.updatedAt || a.createdAt || 0;
+      const timeB = b.updatedAt || b.createdAt || 0;
+      return timeB - timeA;
+    }).map(b => b.id);
+    if (manualOrder.join(",") !== sortedByTime.join(",")) {
+      setManualOrder(null);
+    }
+  }, [blocks]);
+
+  // BlockList的onManualSort：设置手动顺序
+  function handleManualSort(order) {
+    setManualOrder(order);
+  }
+
+  // block内容编辑/new时被调用
+  function handleBlockEdit(...args) {
+    setManualOrder(null); // 清空手动排序，回到时间排序
+    if (onBlockEdit) onBlockEdit(...args);
+  }
+
+  // BlockList渲染
   return (
-    <aside className="w-[15rem] shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 backdrop-blur flex flex-col">
-      <div className="p-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700">
-        <button
-          onClick={onCreate}
-          className="btn-primary-modern flex items-center gap-1 !px-3 !py-2 text-sm"
-        >
-          <Plus size={16} />
-          新建
-        </button>
-        <div className="text-[11px] text-slate-500 dark:text-slate-400 ml-auto">
-          可拖拽排序
-        </div>
-      </div>
-      <div className="px-3 pt-3">
-        <input
-          className="input-modern w-full"
-            placeholder="搜索..."
-          value={query}
-          onChange={e => onQueryChange(e.target.value)}
-        />
-      </div>
-      <div
-        className="flex-1 overflow-auto custom-scroll px-2 pb-4 mt-2"
-        onDragOver={e => e.preventDefault()}
-        onDrop={onDrop}
-      >
-        {blocks.map(b => {
-          const firstLine = (b.content || "").split("\n")[0] || "(空)";
-          const derivedTitle = firstLine.slice(0, 64) || "(空)";
-          const isSel = b.id === selectedId;
-          const isDragging = b.id === draggingId;
-          const lastEdit = (b.updated_at || b.created_at || "").replace("T", " ").slice(5, 16);
-          return (
-            <div
-              key={b.id}
-              draggable
-              onDragStart={() => onDragStart && onDragStart(b.id)}
-              onDragOver={e => onDragOver && onDragOver(e, b.id)}
-              className={`group rounded-lg mb-1 border text-left relative transition cursor-pointer
-                ${
-                  isSel
-                    ? "bg-gradient-to-r from-indigo-500/90 to-blue-500/90 text-white border-transparent shadow"
-                    : "bg-white/70 dark:bg-slate-800/60 hover:bg-white dark:hover:bg-slate-800 border-slate-200/70 dark:border-slate-700/60"
-                }
-                ${isDragging ? "opacity-60 ring-2 ring-indigo-400" : ""}
-              `}
-              onClick={() => onSelect && onSelect(b.id)}
-            >
-              <div className="px-3 pt-2 pb-1">
-                <div className="font-medium truncate text-sm">
-                  {derivedTitle}
-                </div>
-                <div className={`text-[10px] mt-1 ${
-                  isSel ? "text-white/80" : "text-slate-400 dark:text-slate-500"
-                }`}>
-                  最后编辑：{lastEdit}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {!blocks.length && (
-          <div className="text-xs text-slate-400 px-3 py-6 text-center">
-            暂无内容
-          </div>
-        )}
-      </div>
+    <aside className="sidebar">
+      <BlockList
+        blocks={blocks}
+        selectedId={selectedId}
+        onSelect={onSelect}
+        onManualSort={handleManualSort}
+        manualOrder={manualOrder}
+      />
+      {/* 如需新增、删除按钮可补充 */}
     </aside>
   );
 }
