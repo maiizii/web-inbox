@@ -84,6 +84,7 @@ export default function InboxPage() {
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
+    // 不影响 pinned 状态和拖拽顺序
     return real;
   }
 
@@ -137,19 +138,18 @@ export default function InboxPage() {
     e.preventDefault();
     if (!draggingId || draggingId === overId) return;
     setBlocks(prev => {
-      // 只排序未置顶 block
-      const notPinned = prev.filter(b => !b.pinned);
+      // pinned 状态必须保留
+      const pinned = prev.filter(b => b.pinned);
+      let notPinned = prev.filter(b => !b.pinned);
       const from = notPinned.findIndex(b => b.id === draggingId);
       const to = notPinned.findIndex(b => b.id === overId);
       if (from === -1 || to === -1) return prev;
-      const newNotPinned = [...notPinned];
-      const [item] = newNotPinned.splice(from, 1);
-      newNotPinned.splice(to, 0, item);
-
-      // 重新组合 pinned 和 notPinned
-      const pinned = prev.filter(b => b.pinned);
-      setManualOrder(newNotPinned.map(b => b.id));
-      return [...pinned, ...newNotPinned];
+      notPinned = [...notPinned];
+      const [item] = notPinned.splice(from, 1);
+      notPinned.splice(to, 0, item);
+      setManualOrder(notPinned.map(b => b.id));
+      // 返回 pinned + 新排序的 notPinned
+      return [...pinned, ...notPinned];
     });
   }
   async function onDrop() {
@@ -172,11 +172,19 @@ export default function InboxPage() {
   // 置顶和取消置顶事件
   function onPin(id) {
     setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: true } : b));
-    setManualOrder(null); // 每次置顶/取消置顶后清除拖拽顺序，重新按置顶+时间排序
+    setManualOrder(prev => {
+      // 置顶后要从手动顺序里去掉该 block
+      if (!prev) return null;
+      return prev.filter(i => i !== id);
+    });
   }
   function onUnpin(id) {
     setBlocks(prev => prev.map(b => b.id === id ? { ...b, pinned: false } : b));
-    setManualOrder(null);
+    // 取消置顶后将其插入到未置顶区的首位，手动顺序需更新
+    setManualOrder(prev => {
+      const notPinnedBlocks = blocks.filter(b => !b.pinned && b.id !== id).map(b => b.id);
+      return [id, ...notPinnedBlocks];
+    });
   }
 
   return (
