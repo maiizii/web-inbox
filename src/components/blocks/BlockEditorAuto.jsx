@@ -61,10 +61,7 @@ export default function BlockEditorAuto({
   const isRestoringHistoryRef = useRef(false);
 
   // scroll sync guards
-  const programmaticScrollRef = useRef(false);
-  const pointerActiveRef = useRef({ editor: false, preview: false });
-  const scrollSourceRef = useRef(null);
-  const scrollIdleTimerRef = useRef(null);
+  const isSyncingScrollRef = useRef(false);
 
   const overflowCheckTimerRef = useRef(null);
 
@@ -503,6 +500,38 @@ export default function BlockEditorAuto({
     localStorage.setItem(key, "0.5");
   }
   useEffect(() => () => { if (draggingDivider) stopDividerDrag(); }, [draggingDivider]);
+
+  // 修复后的同步滚动（双向，且只在showPreview且syncScrollEnabled时有效）
+  useEffect(() => {
+    if (!showPreview) return;
+    const ta = textareaRef.current;
+    const pv = previewScrollRef.current;
+    if (!ta || !pv) return;
+
+    // 双向同步，防止递归
+    function syncPreviewScroll() {
+      if (!syncScrollEnabled || isSyncingScrollRef.current) return;
+      isSyncingScrollRef.current = true;
+      const ratio = ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight);
+      pv.scrollTop = ratio * (pv.scrollHeight - pv.clientHeight);
+      setTimeout(() => { isSyncingScrollRef.current = false; }, 0);
+    }
+    function syncEditorScroll() {
+      if (!syncScrollEnabled || isSyncingScrollRef.current) return;
+      isSyncingScrollRef.current = true;
+      const ratio = pv.scrollTop / Math.max(1, pv.scrollHeight - pv.clientHeight);
+      ta.scrollTop = ratio * (ta.scrollHeight - ta.clientHeight);
+      setTimeout(() => { isSyncingScrollRef.current = false; }, 0);
+    }
+
+    ta.addEventListener("scroll", syncPreviewScroll);
+    pv.addEventListener("scroll", syncEditorScroll);
+
+    return () => {
+      ta.removeEventListener("scroll", syncPreviewScroll);
+      pv.removeEventListener("scroll", syncEditorScroll);
+    };
+  }, [showPreview, syncScrollEnabled, previewMode, content]);
 
   /* ---------------- 内容修改 ---------------- */
   function handleContentChange(v) {
