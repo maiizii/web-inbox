@@ -18,19 +18,19 @@ export default function Sidebar({
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
-  // 深色规范：外层缝隙=50%灰，内部块=30%灰，未选中卡片=更浅一点
-  const GAP_BG = isDark ? "#808080" : "#ffffff";
-  const BOX_BG = isDark ? "#4d4d4d" : "#ffffff";
-  const CARD_BG = isDark ? "#6a6a6a" : "#ffffff";
-  const CARD_HOVER = isDark ? "#767676" : "#f1f5f9";
-  const BORDER = isDark ? "#5e5e5e" : "#e2e8f0";
+  // 调整为与编辑器同色系（深蓝/石板系）
+  const GAP_BG   = isDark ? "var(--color-bg)" : "#ffffff";              // 外层缝隙
+  const BOX_BG   = isDark ? "var(--color-surface)" : "#ffffff";         // 内部块
+  const CARD_BG  = isDark ? "var(--color-surface-alt)" : "#ffffff";     // 未选中卡片
+  const HOVER_BG = isDark ? "#27425b" : "#f1f5f9";                      // 悬停更亮
+  const BORDER   = isDark ? "var(--color-border)" : "#e2e8f0";
 
   return (
     <aside
       className="w-72 shrink-0 rounded-lg overflow-hidden border-r border-slate-200 dark:border-slate-700 flex flex-col"
       style={{ backgroundColor: GAP_BG }}
     >
-      {/* 顶部工具条：30%灰 */}
+      {/* 顶部工具条 */}
       <div
         className="p-2 border-b border-slate-200 dark:border-slate-700"
         style={{ backgroundColor: BOX_BG }}
@@ -43,13 +43,14 @@ export default function Sidebar({
             <Plus size={16} />
             新建
           </button>
-          <div className="text-[11px] text-slate-500 dark:text-slate-200 ml-auto">
+          {/* 放大一些 */}
+          <div className="text-[12.5px] md:text-[13px] font-medium text-slate-500 dark:text-slate-200 ml-auto">
             可拖拽排序
           </div>
         </div>
       </div>
 
-      {/* 搜索区：30%灰 */}
+      {/* 搜索区 */}
       <div className="px-3 pt-2 pb-2" style={{ backgroundColor: BOX_BG }}>
         <input
           className="input-modern"
@@ -59,7 +60,7 @@ export default function Sidebar({
         />
       </div>
 
-      {/* 列表容器：30%灰 */}
+      {/* 列表 */}
       <div
         className="flex-1 overflow-auto custom-scroll px-2 pb-4 mt-2"
         style={{ backgroundColor: BOX_BG }}
@@ -91,14 +92,13 @@ export default function Sidebar({
               className={`${base} ${isSel ? selCls : unselCls} ${
                 isDragging ? "opacity-60 ring-2 ring-indigo-400" : ""
               }`}
-              // 选中卡片固定渐变；未选中卡片用更浅底色，并保证边框区分
               style={
                 isSel
-                  ? { }
+                  ? {}
                   : { backgroundColor: CARD_BG, borderColor: BORDER }
               }
               onMouseEnter={e => {
-                if (!isSel) e.currentTarget.style.backgroundColor = CARD_HOVER;
+                if (!isSel) e.currentTarget.style.backgroundColor = HOVER_BG;
               }}
               onMouseLeave={e => {
                 if (!isSel) e.currentTarget.style.backgroundColor = CARD_BG;
