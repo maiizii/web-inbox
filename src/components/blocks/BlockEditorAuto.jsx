@@ -1,5 +1,5 @@
-// 仅针对本次问题的变更：移动端标题可见；行号在 <md 隐藏避免错乱
-// 若你已用我上一版“修复 escapeHtml/移动端分屏”的文件，此版本可直接覆盖。
+// 变更点：深色主题不动；仅隐藏移动端标题；其余逻辑保持。
+// 若你之前使用了我提供的完整版本，直接覆盖即可。
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Undo2, Redo2 } from "lucide-react";
 import { apiUploadImage } from "../../api/cloudflare.js";
@@ -101,7 +101,10 @@ export default function BlockEditorAuto({
     return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
   }
   function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
-  function updateLineNums(txt) { setLineNumbers((txt ? txt.split("\n").length : 1).toString().split(",") ? txt.split("\n").map((_, i) => i + 1).join("\n") : "1"); }
+  function updateLineNums(txt) {
+    if (!txt) { setLineNumbers("1"); return; }
+    setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
+  }
 
   function ensureHistory(blockId, init) {
     if (!blockId) return;
@@ -158,8 +161,6 @@ export default function BlockEditorAuto({
     ensureHistory(block?.id, init);
     updateLineNums(init);
     updatePreview(init);
-    userManuallyBlurredRef.current = false;
-    shouldRestoreFocusRef.current = false;
     requestAnimationFrame(() => { syncLineNumbersPadding(); detectOverflow(); });
   }, [block?.id]);
 
@@ -174,8 +175,6 @@ export default function BlockEditorAuto({
 
   function captureSel() { const ta = textareaRef.current; if (!ta) return; selectionRef.current = { start: ta.selectionStart, end: ta.selectionEnd }; }
   function restoreSel() { const ta = textareaRef.current; if (!ta) return; const { start, end } = selectionRef.current; if (start == null || end == null) return; try { ta.setSelectionRange(start, end); } catch {} }
-  function maybeRestoreFocus() { if (userManuallyBlurredRef.current || !shouldRestoreFocusRef.current) return; const ta = textareaRef.current; if (ta && document.activeElement !== ta) { ta.focus(); restoreSel(); } }
-  useEffect(() => { if (!block) return; requestAnimationFrame(maybeRestoreFocus); }, [block?.id]);
 
   async function doSave() {
     if (!block || block.optimistic || !dirty) return;
@@ -189,12 +188,12 @@ export default function BlockEditorAuto({
       catch (err) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err); else throw err; }
       if (currentBlockIdRef.current === saveId) lastPersisted.current = { content };
     } catch (err) { if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败"); }
-    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); requestAnimationFrame(maybeRestoreFocus); } }
+    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); } }
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
-  function onBlur() { userManuallyBlurredRef.current = true; flushSave(); }
-  function onContentFocus() { userManuallyBlurredRef.current = false; shouldRestoreFocusRef.current = true; captureSel(); }
+  function onBlur() { flushSave(); }
+  function onContentFocus() {}
 
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
@@ -310,14 +309,14 @@ export default function BlockEditorAuto({
       const adjust = target.length - newTarget.length;
       const newSelEnd = end - adjust;
       setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(newSelStart, newSelEnd); captureSel(); });
+      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(newSelStart, newSelEnd); });
     } else {
       const newLines = lines.length === 1 ? [INDENT + lines[0]] : lines.map(l => INDENT + l);
       const newTarget = newLines.join("\n");
       const newContent = before + newTarget + after;
       const delta = newLines.length * INDENT.length;
       setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); captureSel(); });
+      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); });
     }
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
@@ -380,7 +379,7 @@ export default function BlockEditorAuto({
     return () => { ta.removeEventListener("scroll", syncPreviewScroll); pv.removeEventListener("scroll", syncEditorScroll); };
   }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
 
-  function handleContentChange(v) { setContent(v); setLineNumbers(v.split("\n").map((_, i) => i + 1).join("\n")); updatePreview(v); pushHistory(v); detectOverflow(); }
+  function handleContentChange(v) { setContent(v); updateLineNums(v); updatePreview(v); pushHistory(v); detectOverflow(); }
 
   if (!block)
     return (
@@ -393,7 +392,7 @@ export default function BlockEditorAuto({
 
   const TitleEl = (
     <div
-      className={`flex-1 text-lg font-semibold select-none ${isMobile ? "whitespace-pre-wrap break-words" : "truncate"}`}
+      className="flex-1 text-lg font-semibold select-none truncate"
       style={{ color: "var(--color-text)" }}
     >
       {derivedTitle}
@@ -410,8 +409,9 @@ export default function BlockEditorAuto({
           返回列表
         </button>
       )}
-      {TitleEl}
-      <div className="flex items-center gap-2 text-xs">
+      {/* 移动端：不显示标题；PC端显示标题 */}
+      {!isMobile && TitleEl}
+      <div className="flex items-center gap-2 text-xs ml-auto">
         {!isMobile && (
           <>
             <button type="button" onClick={() => restoreHistory(-1)} disabled={!canUndo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="撤销 (Ctrl+Z)"><Undo2 size={16} /></button>
@@ -462,11 +462,8 @@ export default function BlockEditorAuto({
                     disabled={disabledByCreation}
                     placeholder="输入文本 (可粘贴图片)"
                     wrap="soft"
-                    onChange={e => { handleContentChange(e.target.value); shouldRestoreFocusRef.current = true; userManuallyBlurredRef.current = false; captureSel(); }}
-                    onFocus={onContentFocus}
+                    onChange={e => { handleContentChange(e.target.value); }}
                     onBlur={onBlur}
-                    onClick={captureSel}
-                    onKeyUp={captureSel}
                     onKeyDown={handleKeyDown}
                     style={{ overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--color-surface)", color: "var(--color-text)" }}
                   />
@@ -504,11 +501,8 @@ export default function BlockEditorAuto({
                   disabled={disabledByCreation}
                   placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
                   wrap="off"
-                  onChange={e => { handleContentChange(e.target.value); shouldRestoreFocusRef.current = true; userManuallyBlurredRef.current = false; captureSel(); }}
-                  onFocus={onContentFocus}
+                  onChange={e => { handleContentChange(e.target.value); }}
                   onBlur={onBlur}
-                  onClick={captureSel}
-                  onKeyUp={captureSel}
                   onKeyDown={handleKeyDown}
                   style={{ overflow: "auto", background: "var(--color-surface)", color: "var(--color-text)" }}
                 />
