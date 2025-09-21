@@ -23,6 +23,7 @@ export default function BlockEditorAuto({
 }) {
   const toast = useToast();
 
+  // —— 响应式
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 768px)").matches
@@ -39,6 +40,7 @@ export default function BlockEditorAuto({
   const [mobileView, setMobileView] = useState("edit"); // edit | preview
   useEffect(() => { if (!isMobile) setMobileView("edit"); }, [isMobile]);
 
+  // —— 状态
   const [content, setContent] = useState(block?.content || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -57,12 +59,14 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
 
+  // —— 引用
   const splitContainerRef   = useRef(null);
   const editorScrollRef     = useRef(null);
   const previewScrollRef    = useRef(null);
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
+  // 镜像测量元素（桌面端软换行/需要时使用）
   const mirrorRef = useRef(null);
 
   const lastPersisted = useRef({ content: "" });
@@ -82,9 +86,14 @@ export default function BlockEditorAuto({
   const canUndo = hist ? hist.index > 0 : false;
   const canRedo = hist ? hist.index < hist.stack.length - 1 : false;
 
+  // —— 工具
   function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
   function escapeHtml(str) {
-    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    return String(str)
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;");
   }
   function renderPlainWithImages(raw) {
     if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
@@ -100,6 +109,7 @@ export default function BlockEditorAuto({
   }
   function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
 
+  // —— 历史
   function ensureHistory(blockId, init) {
     if (!blockId) return;
     if (!historyStoreRef.current.has(blockId)) {
@@ -142,7 +152,7 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
-  // —— 行号：移动端按软换行计算
+  // —— 行号（移动端直接不显示）
   function ensureMirrorReady() {
     if (mirrorRef.current || !textareaRef.current) return;
     const div = document.createElement("div");
@@ -178,10 +188,14 @@ export default function BlockEditorAuto({
     return Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
   }
   function updateLineNumsWrapped(txt) {
+    // 移动端：不显示行号，直接返回
+    if (isMobile) { setLineNumbers(""); return; }
+
     const ta = textareaRef.current;
     if (!ta) { setLineNumbers("1"); return; }
-    const isSoftWrap = isMobile || ta.getAttribute("wrap") === "soft";
+    const isSoftWrap = ta.getAttribute("wrap") === "soft";
     if (!txt) { setLineNumbers("1"); return; }
+
     if (!isSoftWrap) {
       setLineNumbers(txt.split("\n").map((_,i)=>i+1).join("\n"));
       return;
@@ -198,7 +212,7 @@ export default function BlockEditorAuto({
     setLineNumbers(out.join("\n") || "1");
   }
 
-  // 初始
+  // —— 初始
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
@@ -207,7 +221,7 @@ export default function BlockEditorAuto({
     updateLineNumsWrapped(init);
     updatePreview(init);
     requestAnimationFrame(() => { syncLineNumbersPadding(); detectOverflow(); });
-  }, [block?.id]);
+  }, [block?.id, isMobile]);
 
   useEffect(() => { updatePreview(content); }, [content]);
 
@@ -219,7 +233,7 @@ export default function BlockEditorAuto({
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
-  // 自动保存
+  // —— 自动保存
   async function doSave() {
     if (!block || block.optimistic || !dirty) return;
     const saveId = block.id;
@@ -238,7 +252,7 @@ export default function BlockEditorAuto({
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
   function onBlur() { flushSave(); }
 
-  // 同步/溢出
+  // —— 同步/溢出
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
@@ -274,7 +288,7 @@ export default function BlockEditorAuto({
   }
   useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
-  // 图片上传
+  // —— 图片上传
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -333,7 +347,7 @@ export default function BlockEditorAuto({
     for (const f of files) await uploadOne(f);
   }, [block]);
 
-  // Tab 缩进
+  // —— Tab 缩进
   function handleIndentKey(e) {
     if (e.key !== "Tab") return;
     const ta = textareaRef.current; if (!ta) return;
@@ -371,7 +385,7 @@ export default function BlockEditorAuto({
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
 
-  // 桌面分割条/同步滚动
+  // —— 桌面分割条/同步滚动
   function startDividerDrag(e) {
     if (!showPreview || isMobile) return;
     e.preventDefault();
@@ -430,11 +444,12 @@ export default function BlockEditorAuto({
     return () => { ta.removeEventListener("scroll", syncPreviewScroll); pv.removeEventListener("scroll", syncEditorScroll); };
   }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
 
+  // —— 内容变化
   function handleContentChange(v) {
     setContent(v); updateLineNumsWrapped(v); updatePreview(v); pushHistory(v); detectOverflow();
   }
 
-  // 顶部工具条（PC 右对齐；移动端也显示保存状态）
+  // —— 顶部工具条（移动端也显示保存状态）
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
@@ -503,19 +518,17 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // —— 移动端（关键：强制 flex:1 1 auto + minHeight:0）
+  // —— 移动端：不显示行号，强制铺满
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e=>e.preventDefault()}>
         {TopBar}
         {mobileView === "edit" ? (
-          <div className="editor-pane rounded-md" style={{ flex: "1 1 auto", minHeight: 0 }}>
-            <div className="editor-scroll custom-scroll" ref={editorScrollRef} style={{ flex: "1 1 auto", minHeight: 0 }}>
-              <div className="editor-inner" style={{ flex: "1 1 auto", minHeight: 0 }}>
-                <div className="editor-line-numbers">
-                  <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
-                </div>
-                <div className="editor-text-wrapper" style={{ flex: "1 1 auto", minHeight: 0 }}>
+          <div className="editor-pane rounded-md" style={{ flex:"1 1 auto", minHeight:0 }}>
+            <div className="editor-scroll custom-scroll" ref={editorScrollRef} style={{ flex:"1 1 auto", minHeight:0 }}>
+              <div className="editor-inner" style={{ flex:"1 1 auto", minHeight:0 }}>
+                {/* 移动端：行号已移除 */}
+                <div className="editor-text-wrapper" style={{ flex:"1 1 auto", minHeight:0 }}>
                   <textarea
                     ref={textareaRef}
                     className="editor-textarea custom-scroll"
@@ -523,16 +536,16 @@ export default function BlockEditorAuto({
                     disabled={disabledByCreation}
                     placeholder="输入文本 (可粘贴图片)"
                     wrap="soft"
-                    onChange={e => { setContent(e.target.value); updateLineNumsWrapped(e.target.value); updatePreview(e.target.value); pushHistory(e.target.value); detectOverflow(); }}
+                    onChange={e => { handleContentChange(e.target.value); }}
                     onBlur={onBlur}
                     onKeyDown={handleKeyDown}
                     style={{
-                      overflow: "auto",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      background: "var(--color-surface)",
-                      color: "var(--color-text)",
-                      paddingBottom: `calc(env(safe-area-inset-bottom,0px) + ${MOBILE_BOTTOM_PAD_PX}px)`
+                      overflow:"auto",
+                      whiteSpace:"pre-wrap",
+                      wordBreak:"break-word",
+                      background:"var(--color-surface)",
+                      color:"var(--color-text)",
+                      paddingBottom:`calc(env(safe-area-inset-bottom,0px) + ${MOBILE_BOTTOM_PAD_PX}px)`
                     }}
                   />
                 </div>
@@ -540,15 +553,11 @@ export default function BlockEditorAuto({
             </div>
           </div>
         ) : (
-          <div className="preview-pane rounded-md" style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <div className="preview-pane rounded-md" style={{ flex:"1 1 auto", minHeight:0, display:"flex", flexDirection:"column" }}>
             <div
               ref={previewScrollRef}
               className="preview-scroll custom-scroll"
-              style={{
-                flex: "1 1 auto",
-                minHeight: 0,
-                paddingBottom: `calc(env(safe-area-inset-bottom,0px) + ${MOBILE_BOTTOM_PAD_PX}px)`
-              }}
+              style={{ flex:"1 1 auto", minHeight:0, paddingBottom:`calc(env(safe-area-inset-bottom,0px) + ${MOBILE_BOTTOM_PAD_PX}px)` }}
             >
               <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
@@ -566,7 +575,7 @@ export default function BlockEditorAuto({
         ref={splitContainerRef}
         className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
       >
-        <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flex: "1 1 auto", minHeight: 0 }}>
+        <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flex:"1 1 auto", minHeight:0 }}>
           <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
             <div className="editor-inner">
               <div className="editor-line-numbers">
@@ -580,7 +589,7 @@ export default function BlockEditorAuto({
                   disabled={disabledByCreation}
                   placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
                   wrap="off"
-                  onChange={e => { setContent(e.target.value); updateLineNumsWrapped(e.target.value); updatePreview(e.target.value); pushHistory(e.target.value); detectOverflow(); }}
+                  onChange={e => { handleContentChange(e.target.value); }}
                   onBlur={onBlur}
                   onKeyDown={handleKeyDown}
                   style={{ overflow:"auto", background:"var(--color-surface)", color:"var(--color-text)" }}
