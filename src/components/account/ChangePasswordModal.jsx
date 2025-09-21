@@ -1,51 +1,7 @@
 import React, { useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import { useToast } from "../../hooks/useToast.jsx";
-
-function mapErrorMessage(status, text = "") {
-  const msg = (text || "").toLowerCase();
-  if (status === 401 || status === 403) return "请输入正确的当前密码";
-  if (
-    msg.includes("wrong password") || msg.includes("invalid password") ||
-    msg.includes("incorrect password") || msg.includes("旧密码") ||
-    msg.includes("原密码") || msg.includes("密码错误") || msg.includes("current password")
-  ) return "请输入正确的当前密码";
-  if (status === 404) return "修改密码接口未部署";
-  return text || `请求失败 (HTTP ${status})`;
-}
-
-// 依次探测这些端点；命中非 404 即停
-const CANDIDATES = [
-  "/api/password",               // 我下面给的 Pages Functions 实现
-  "/api/user/password",
-  "/api/user/change-password",
-  "/api/account/password",
-  "/api/profile/password",
-  "/api/auth/password",
-  "/api/auth/change-password",
-  "/api/change-password"
-];
-
-async function tryChangePassword(old_password, new_password) {
-  const payload = { old_password, new_password };
-  let last404 = null;
-  for (const url of CANDIDATES) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(payload)
-    });
-    let text = "";
-    try { const j = await res.clone().json(); text = j?.message || j?.error || ""; }
-    catch { try { text = await res.clone().text(); } catch { text = ""; } }
-
-    if (res.status === 404) { last404 = new Error("修改密码接口未部署"); continue; }
-    if (!res.ok) throw new Error(mapErrorMessage(res.status, text));
-    return { ok: true, endpoint: url };
-  }
-  throw last404 || new Error("修改密码接口未部署");
-}
+import { apiChangePassword } from "../../api/cloudflare.js";
 
 export default function ChangePasswordModal({ open, onClose }) {
   const toast = useToast();
@@ -70,7 +26,7 @@ export default function ChangePasswordModal({ open, onClose }) {
     if (v) { setErr(v); return; }
     setErr(""); setLoading(true);
     try {
-      await tryChangePassword(oldPwd, newPwd);
+      await apiChangePassword(oldPwd, newPwd);
       toast.push("密码已更新", { type: "success" });
       setOldPwd(""); setNewPwd(""); setConfirmPwd("");
       onClose && onClose();
