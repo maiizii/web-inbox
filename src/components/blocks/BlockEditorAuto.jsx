@@ -1,5 +1,3 @@
-// 变更点：深色主题不动；仅隐藏移动端标题；其余逻辑保持。
-// 若你之前使用了我提供的完整版本，直接覆盖即可。
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Undo2, Redo2 } from "lucide-react";
 import { apiUploadImage } from "../../api/cloudflare.js";
@@ -17,32 +15,17 @@ export default function BlockEditorAuto({
   onChange,
   onDelete,
   onImmediateSave,
-  safeUpdateFallback,
-  onBackToList
+  safeUpdateFallback
 }) {
   const toast = useToast();
-
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== "undefined"
-      ? window.matchMedia("(max-width: 768px)").matches
-      : false
-  );
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(max-width: 768px)");
-    const handler = () => setIsMobile(mq.matches);
-    handler();
-    mq.addEventListener?.("change", handler);
-    return () => mq.removeEventListener?.("change", handler);
-  }, []);
-  const [mobileView, setMobileView] = useState("edit"); // edit | preview
-  useEffect(() => { if (!isMobile) setMobileView("edit"); }, [isMobile]);
 
   const [content, setContent] = useState(block?.content || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showPreview, setShowPreview] = useState(true);
-  const [previewMode, setPreviewMode] = useState(() => localStorage.getItem("previewMode") || "vertical");
+  const [previewMode, setPreviewMode] = useState(
+    () => localStorage.getItem("previewMode") || "vertical"
+  );
   const [splitRatio, setSplitRatio] = useState(() => {
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
@@ -54,39 +37,36 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
 
-  const splitContainerRef   = useRef(null);
-  const editorScrollRef     = useRef(null);
-  const previewScrollRef    = useRef(null);
-  const textareaRef         = useRef(null);
+  const splitContainerRef = useRef(null);
+  const editorScrollRef = useRef(null);
+  const previewScrollRef = useRef(null);
+  const textareaRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
   const selectionRef = useRef({ start: null, end: null });
   const userManuallyBlurredRef = useRef(false);
-  const shouldRestoreFocusRef  = useRef(false);
+  const shouldRestoreFocusRef = useRef(false);
   const lastPersisted = useRef({ content: "" });
   const currentBlockIdRef = useRef(block?.id || null);
 
-  const dividerDragRef     = useRef(null);
+  const dividerDragRef = useRef(null);
   const draggingDividerRef = useRef(false);
 
-  const historyStoreRef       = useRef(new Map());
+  const historyStoreRef = useRef(new Map());
   const isRestoringHistoryRef = useRef(false);
-  const isSyncingScrollRef    = useRef(false);
+  const isSyncingScrollRef = useRef(false);
   const overflowCheckTimerRef = useRef(null);
 
   const dirty = !!block && content !== lastPersisted.current.content;
   const derivedTitle = (block?.content || "").split("\n")[0].slice(0, 64) || "(空)";
-  const hist   = historyStoreRef.current.get(block?.id) || null;
+  const hist = historyStoreRef.current.get(block?.id) || null;
   const canUndo = hist ? hist.index > 0 : false;
   const canRedo = hist ? hist.index < hist.stack.length - 1 : false;
 
   function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
   function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function renderPlainWithImages(raw) {
     if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
@@ -161,6 +141,8 @@ export default function BlockEditorAuto({
     ensureHistory(block?.id, init);
     updateLineNums(init);
     updatePreview(init);
+    userManuallyBlurredRef.current = false;
+    shouldRestoreFocusRef.current = false;
     requestAnimationFrame(() => { syncLineNumbersPadding(); detectOverflow(); });
   }, [block?.id]);
 
@@ -175,6 +157,8 @@ export default function BlockEditorAuto({
 
   function captureSel() { const ta = textareaRef.current; if (!ta) return; selectionRef.current = { start: ta.selectionStart, end: ta.selectionEnd }; }
   function restoreSel() { const ta = textareaRef.current; if (!ta) return; const { start, end } = selectionRef.current; if (start == null || end == null) return; try { ta.setSelectionRange(start, end); } catch {} }
+  function maybeRestoreFocus() { if (userManuallyBlurredRef.current || !shouldRestoreFocusRef.current) return; const ta = textareaRef.current; if (ta && document.activeElement !== ta) { ta.focus(); restoreSel(); } }
+  useEffect(() => { if (!block) return; requestAnimationFrame(maybeRestoreFocus); }, [block?.id]);
 
   async function doSave() {
     if (!block || block.optimistic || !dirty) return;
@@ -187,13 +171,16 @@ export default function BlockEditorAuto({
       try { real = await onImmediateSave(block.id, payload); }
       catch (err) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err); else throw err; }
       if (currentBlockIdRef.current === saveId) lastPersisted.current = { content };
-    } catch (err) { if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败"); }
-    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); } }
+    } catch (err) {
+      if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败");
+    } finally {
+      if (currentBlockIdRef.current === saveId) { setSaving(false); requestAnimationFrame(maybeRestoreFocus); }
+    }
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
-  function onBlur() { flushSave(); }
-  function onContentFocus() {}
+  function onBlur() { userManuallyBlurredRef.current = true; flushSave(); }
+  function onContentFocus() { userManuallyBlurredRef.current = false; shouldRestoreFocusRef.current = true; captureSel(); }
 
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
@@ -225,16 +212,13 @@ export default function BlockEditorAuto({
       const pv = previewScrollRef.current; if (pv) { pv.classList.toggle("no-v-scroll", pv.scrollHeight <= pv.clientHeight + 1); }
     });
   }
-  useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
+  useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio]);
 
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
-    try {
-      onChange && onChange(block.id, { content: newContent });
-      const payload = { content: newContent };
+    try { onChange && onChange(block.id, { content: newContent }); const payload = { content: newContent };
       let real;
-      try { real = await onImmediateSave(block.id, payload); }
-      catch (e) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, e); else throw e; }
+      try { real = await onImmediateSave(block.id, payload); } catch (e) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, e); else throw e; }
       lastPersisted.current = { content: newContent };
       pushHistory(newContent, true);
     } catch (e) { toast.push(e.message || "图片保存失败", { type: "error" }); }
@@ -309,22 +293,23 @@ export default function BlockEditorAuto({
       const adjust = target.length - newTarget.length;
       const newSelEnd = end - adjust;
       setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(newSelStart, newSelEnd); });
+      requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(newSelStart, newSelEnd); captureSel(); });
     } else {
       const newLines = lines.length === 1 ? [INDENT + lines[0]] : lines.map(l => INDENT + l);
       const newTarget = newLines.join("\n");
       const newContent = before + newTarget + after;
       const delta = newLines.length * INDENT.length;
       setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); });
+      requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); captureSel(); });
     }
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
 
   function startDividerDrag(e) {
-    if (!showPreview || isMobile) return;
+    if (!showPreview) return;
     e.preventDefault();
-    const container = splitContainerRef.current; if (!container) return;
+    const container = splitContainerRef.current;
+    if (!container) return;
     dividerDragRef.current = { rect: container.getBoundingClientRect() };
     draggingDividerRef.current = true;
     setDraggingDivider(true);
@@ -359,7 +344,7 @@ export default function BlockEditorAuto({
   useEffect(() => () => { if (draggingDivider) stopDividerDrag(); }, [draggingDivider]);
 
   useEffect(() => {
-    if (!showPreview || isMobile) return;
+    if (!showPreview) return;
     const ta = textareaRef.current, pv = previewScrollRef.current;
     if (!ta || !pv) return;
     function syncPreviewScroll() {
@@ -377,7 +362,7 @@ export default function BlockEditorAuto({
     ta.addEventListener("scroll", syncPreviewScroll);
     pv.addEventListener("scroll", syncEditorScroll);
     return () => { ta.removeEventListener("scroll", syncPreviewScroll); pv.removeEventListener("scroll", syncEditorScroll); };
-  }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
+  }, [showPreview, syncScrollEnabled, previewMode, content]);
 
   function handleContentChange(v) { setContent(v); updateLineNums(v); updatePreview(v); pushHistory(v); detectOverflow(); }
 
@@ -390,101 +375,48 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  const TitleEl = (
-    <div
-      className="flex-1 text-lg font-semibold select-none truncate"
-      style={{ color: "var(--color-text)" }}
-    >
-      {derivedTitle}
-    </div>
-  );
-
-  const TopBar = (
-    <div
-      className="flex items-center gap-3 py-3 px-4 border-b"
-      style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}
-    >
-      {isMobile && onBackToList && (
-        <button type="button" onClick={onBackToList} className="btn-outline-modern !px-3 !py-1.5">
-          返回列表
-        </button>
-      )}
-      {/* 移动端：不显示标题；PC端显示标题 */}
-      {!isMobile && TitleEl}
-      <div className="flex items-center gap-2 text-xs ml-auto">
-        {!isMobile && (
-          <>
-            <button type="button" onClick={() => restoreHistory(-1)} disabled={!canUndo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="撤销 (Ctrl+Z)"><Undo2 size={16} /></button>
-            <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="恢复 (Ctrl+Y)"><Redo2 size={16} /></button>
-            {showPreview && (
-              <>
-                <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-1.5" title="同步滚动开/关">{syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}</button>
-                <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "上下预览" : "左右预览"}</button>
-              </>
-            )}
-            <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">{showPreview ? "隐藏预览" : "显示预览"}</button>
-          </>
-        )}
-        {isMobile && (
-          <>
-            {mobileView === "edit" ? (
-              <button type="button" onClick={() => setMobileView("preview")} className="btn-outline-modern !px-3 !py-1.5">预览</button>
-            ) : (
-              <button type="button" onClick={() => setMobileView("edit")} className="btn-outline-modern !px-3 !py-1.5">返回编辑</button>
-            )}
-          </>
-        )}
-        <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
-          {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
-        </div>
-        <button onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }} className="btn-danger-modern !px-3 !py-1.5">删除</button>
-      </div>
-    </div>
-  );
-
-  if (isMobile) {
-    return (
-      <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
-        {TopBar}
-        {mobileView === "edit" ? (
-          <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
-            <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
-              <div className="editor-inner">
-                {/* 行号在 <md 隐藏，避免错乱 */}
-                <div className="editor-line-numbers hidden md:block">
-                  <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
-                </div>
-                <div className="editor-text-wrapper">
-                  <textarea
-                    ref={textareaRef}
-                    className="editor-textarea custom-scroll"
-                    value={content}
-                    disabled={disabledByCreation}
-                    placeholder="输入文本 (可粘贴图片)"
-                    wrap="soft"
-                    onChange={e => { handleContentChange(e.target.value); }}
-                    onBlur={onBlur}
-                    onKeyDown={handleKeyDown}
-                    style={{ overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--color-surface)", color: "var(--color-text)" }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
-            <div ref={previewScrollRef} className="preview-scroll custom-scroll">
-              <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
-      {TopBar}
+      {/* 顶部条：PC显示标题，移动端隐藏标题但始终显示按钮；背景/边框使用主题变量，保证对比度 */}
+      <div
+        className="flex items-center gap-3 py-3 px-4 border-b"
+        style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}
+      >
+        <div className="hidden md:block flex-1 text-lg font-semibold truncate select-none" style={{ color: "var(--color-text)" }}>
+          {derivedTitle}
+        </div>
+        <div className="md:hidden flex-1" />
+        <div className="flex items-center gap-2 text-xs">
+          <button type="button" onClick={() => restoreHistory(-1)} disabled={!canUndo}
+                  className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="撤销 (Ctrl+Z)">
+            <Undo2 size={16} />
+          </button>
+          <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo}
+                  className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="恢复 (Ctrl+Y)">
+            <Redo2 size={16} />
+          </button>
+          {showPreview && (
+            <>
+              <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-1.5" title="同步滚动开/关">
+                {syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}
+              </button>
+              <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))}
+                      className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">
+                {previewMode === "vertical" ? "上下预览" : "左右预览"}
+              </button>
+            </>
+          )}
+          <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">
+            {showPreview ? "隐藏预览" : "显示预览"}
+          </button>
+          <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
+            {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
+          </div>
+          <button onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }}
+                  className="btn-danger-modern !px-3 !py-1.5">删除</button>
+        </div>
+      </div>
+
       <div
         ref={splitContainerRef}
         className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
@@ -492,7 +424,11 @@ export default function BlockEditorAuto({
         <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}>
           <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
             <div className="editor-inner">
-              <div className="editor-line-numbers"><pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre></div>
+              <div className="editor-line-numbers">
+                <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">
+                  {lineNumbers}
+                </pre>
+              </div>
               <div className="editor-text-wrapper">
                 <textarea
                   ref={textareaRef}
@@ -501,21 +437,32 @@ export default function BlockEditorAuto({
                   disabled={disabledByCreation}
                   placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
                   wrap="off"
-                  onChange={e => { handleContentChange(e.target.value); }}
+                  onChange={e => { handleContentChange(e.target.value); shouldRestoreFocusRef.current = true; userManuallyBlurredRef.current = false; captureSel(); }}
+                  onFocus={onContentFocus}
                   onBlur={onBlur}
+                  onClick={captureSel}
+                  onKeyUp={captureSel}
                   onKeyDown={handleKeyDown}
-                  style={{ overflow: "auto", background: "var(--color-surface)", color: "var(--color-text)" }}
+                  style={{ overflow: "auto" }}
                 />
               </div>
             </div>
           </div>
         </div>
+
         {showPreview && (
           <>
-            <div className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`} onMouseDown={startDividerDrag} onTouchStart={startDividerDrag} onDoubleClick={resetSplit} title="拖动调整比例，双击恢复 50%" />
+            <div
+              className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`}
+              onMouseDown={startDividerDrag}
+              onTouchStart={startDividerDrag}
+              onDoubleClick={resetSplit}
+              title="拖动调整比例，双击恢复 50%"
+            />
             <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
               <div ref={previewScrollRef} className="preview-scroll custom-scroll">
-                <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
+                     dangerouslySetInnerHTML={{ __html: previewHtml }} />
               </div>
             </div>
           </>
