@@ -688,7 +688,7 @@ if (isMobile) {
                   style={{
                     flex: "1 1 0",
                     minHeight: 0,
-                    overflowX: "hidden",
+                    overflowX: "auto",
                     overflowY: editorCanScroll ? "auto" : "hidden",
                     background: "var(--color-surface)",
                     color: "var(--color-text)"
