@@ -40,23 +40,26 @@ export default function InboxPage() {
   const [manualOrder, setManualOrder] = useState(null);
   const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
 
-  // === 设备检测：手机端两屏分离 ===
+  // —— 响应式：移动端“列表/编辑”两屏
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 768px)").matches
       : false
   );
+  const [mobileStage, setMobileStage] = useState("list"); // list | editor
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mq = window.matchMedia("(max-width: 768px)");
-    const handler = () => setIsMobile(mq.matches);
+    const handler = () => {
+      const now = mq.matches;
+      setIsMobile(now);
+      // 尺寸变化时，回到列表，避免布局残留
+      if (now) setMobileStage("list");
+    };
     handler();
     mq.addEventListener?.("change", handler);
     return () => mq.removeEventListener?.("change", handler);
   }, []);
-  // list | editor
-  const [mobileStage, setMobileStage] = useState("list");
-  useEffect(() => { if (!isMobile) setMobileStage("list"); }, [isMobile]);
 
   async function loadBlocks() {
     try {
@@ -127,7 +130,6 @@ export default function InboxPage() {
     };
     setBlocks(prev => [optimistic, ...prev]);
     setSelectedId(optimistic.id);
-    if (isMobile) setMobileStage("editor");
     try {
       const real = await apiCreateBlock("");
       setBlocks(prev =>
@@ -145,6 +147,8 @@ export default function InboxPage() {
         apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
         return newList;
       });
+
+      if (isMobile) setMobileStage("editor");
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
@@ -170,7 +174,6 @@ export default function InboxPage() {
     }
   }
 
-  // 桌面拖拽
   function onDragStart(id) { setDraggingId(id); }
   function onDragOver(e, overId) {
     e.preventDefault();
@@ -201,34 +204,15 @@ export default function InboxPage() {
     }
   }
 
-  // 移动端：快速上/下移
-  async function onQuickMove(id, dir) {
-    setBlocks(prev => {
-      const list = [...prev];
-      const i = list.findIndex(b => b.id === id);
-      if (i === -1) return prev;
-      const j = i + dir;
-      if (j < 0 || j >= list.length) return prev;
-      const [item] = list.splice(i, 1);
-      list.splice(j, 0, item);
-      apiReorderBlocks(list.map((b, idx) => ({ id: b.id, position: idx + 1 })))
-        .then(() => toast.push("顺序已保存", { type: "success" }))
-        .catch(err => toast.push(err.message || "保存顺序失败", { type: "error" }));
-      return list;
-    });
-  }
-
-  // 选择行为：手机端切到编辑屏
   function handleSelect(id) {
     setSelectedId(id);
     if (isMobile) setMobileStage("editor");
   }
 
-  // 渲染：手机端“单屏”切换；桌面端双列
-  if (isMobile) {
-    return (
-      <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
-        {mobileStage === "list" ? (
+  return (
+    <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
+      {isMobile ? (
+        mobileStage === "list" ? (
           <Sidebar
             blocks={sortedBlocks}
             selectedId={selectedId}
@@ -240,7 +224,6 @@ export default function InboxPage() {
             onDragStart={onDragStart}
             onDragOver={onDragOver}
             onDrop={onDrop}
-            onQuickMove={onQuickMove}
           />
         ) : (
           <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
@@ -252,35 +235,31 @@ export default function InboxPage() {
               onBackToList={() => setMobileStage("list")}
             />
           </div>
-        )}
-      </div>
-    );
-  }
-
-  // 桌面
-  return (
-    <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
-      <Sidebar
-        blocks={sortedBlocks}
-        selectedId={selectedId}
-        onSelect={handleSelect}
-        onCreate={createEmptyBlock}
-        query={q}
-        onQueryChange={setQ}
-        draggingId={draggingId}
-        onDragStart={onDragStart}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
-        onQuickMove={onQuickMove}
-      />
-      <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
-        <BlockEditorAuto
-          block={selected}
-          onChange={optimisticChange}
-          onDelete={deleteBlock}
-          onImmediateSave={persistUpdate}
-        />
-      </div>
+        )
+      ) : (
+        <>
+          <Sidebar
+            blocks={sortedBlocks}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+            onCreate={createEmptyBlock}
+            query={q}
+            onQueryChange={setQ}
+            draggingId={draggingId}
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+          />
+          <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
+            <BlockEditorAuto
+              block={selected}
+              onChange={optimisticChange}
+              onDelete={deleteBlock}
+              onImmediateSave={persistUpdate}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
