@@ -136,7 +136,7 @@ export default function Sidebar({
               }}
               onClick={() => onSelect && onSelect(b.id)}
             >
-              <div className="px-3 pt-2 pb-1 flex items-start gap-2">
+              <div className="px-3 pt-2 pb-1 flex items-center gap-2">
                 <div className="flex-1 min-w-0">
                   <div className={`font-medium truncate text-sm ${titleCls}`}>
                     {derivedTitle}
@@ -150,9 +150,9 @@ export default function Sidebar({
                   </div>
                 </div>
 
-                {/* 移动端：右侧上下移动按钮 */}
+                {/* 移动端：右侧上下移动按钮（并排） */}
                 {isMobile && (onMoveUp || onMoveDown) && (
-                  <div className="flex flex-col items-center gap-1 ml-1 pt-0.5">
+                  <div className="flex flex-row items-center gap-1 ml-1">
                     <button
                       type="button"
                       onClick={(e) => {
