@@ -85,32 +85,27 @@ export async function apiUploadImage(file) {
 }
 
 //  apiChangePassword 
-// 彻底替换：由调用方传入 email；不再依赖 apiMe()
+// 精简版：由调用方传入 email；无调试痕迹；成功返回 {ok:true}
 export async function apiChangePassword(old_password, new_password, email) {
+  if (!email) throw new Error("未登录，请重新登录");
+
   const endpoints = [
+    "/api/password",                // 已确认存在并工作，优先
     "/api/auth/password",
     "/api/user/password",
     "/api/account/password",
     "/api/profile/password",
     "/api/user/change-password",
     "/api/auth/change-password",
-    "/api/change-password",
-    "/api/password" // Pages Functions 兜底
+    "/api/change-password"
   ];
 
-  const trace = [];
-  if (!email) {
-    trace.push("[PRE] no email from caller");
-    throw Object.assign(new Error("未登录，请重新登录"), { _trace: trace.join("\n") });
-  }
-  trace.push(`[PRE] email=${email}`);
+  const payload = { email, old_password, new_password };
 
   const mapErr = (status, text = "") => {
     const s = (text || "").toLowerCase();
-    if ((status === 401 || status === 403) && /(not\s*logged\s*in|login\s*required|请.*登录|未登录)/i.test(s))
-      return "未登录，请重新登录";
+    if (status === 401 || status === 403) return "请输入正确的当前密码";
     if (
-      status === 401 || status === 403 ||
       /(wrong|invalid|incorrect).*(old|current).*(pass)/i.test(s) ||
       /旧密码|原密码|当前密码|user.*not.*found|no.*such.*user|账号不存在/i.test(s)
     ) return "请输入正确的当前密码";
@@ -125,28 +120,24 @@ export async function apiChangePassword(old_password, new_password, email) {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, old_password, new_password })
+      body: JSON.stringify(payload)
     });
 
-    let bodyMsg = "";
+    let msg = "";
     try {
       const j = await res.clone().json();
-      bodyMsg = j?.message || j?.error || "";
-      // 业务失败但 200
-      if (res.ok && j && typeof j === "object" && j.ok === false) {
-        throw Object.assign(new Error(mapErr(400, bodyMsg)), {});
+      msg = j?.message || j?.error || "";
+      if (res.ok) {
+        if (j && typeof j === "object" && j.ok === false) throw new Error(mapErr(400, msg));
+        return { ok: true };
       }
     } catch {
-      try { bodyMsg = await res.clone().text(); } catch {}
+      try { msg = await res.clone().text(); } catch {}
     }
 
-    trace.push(`${url} -> ${res.status}${bodyMsg ? ` | ${bodyMsg.slice(0,120)}` : ""}`);
-
     if (res.status === 404) { saw404 = true; continue; }
-    if (res.ok) return { ok: true, _endpoint: url, _trace: trace.join("\n") };
-
-    throw Object.assign(new Error(mapErr(res.status, bodyMsg)), { _trace: trace.join("\n") });
+    throw new Error(mapErr(res.status, msg));
   }
 
-  throw Object.assign(new Error(saw404 ? "修改密码接口未部署" : "修改密码失败"), { _trace: trace.join("\n") });
+  throw new Error(saw404 ? "修改密码接口未部署" : "修改密码失败");
 }
