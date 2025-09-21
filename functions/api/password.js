@@ -4,11 +4,8 @@ export async function onRequestPost({ request, env }) {
     const body = await request.json();
     const old_password = body?.old_password || "";
     const new_password = body?.new_password || "";
-    const emailFromBody = body?.email || "";
-
-    // 允许多来源获取身份：优先 body.email，其次一些常见头
     const email =
-      emailFromBody ||
+      body?.email ||
       request.headers.get("Cf-Access-Authenticated-User-Email") ||
       request.headers.get("x-user-email") ||
       "";
@@ -16,25 +13,31 @@ export async function onRequestPost({ request, env }) {
     if (!email) return json({ error: "缺少 email" }, 400);
     if (!old_password || !new_password) return json({ error: "缺少参数" }, 400);
 
-    // 读用户
-    const row = await env.DB.prepare(
-      "SELECT email, password_hash, salt FROM users WHERE email = ?"
-    ).bind(email).first();
+    const hasSalt = await tableHasColumn(env, "users", "salt");
+
+    // 读取用户（根据是否有 salt 列选择查询）
+    const row = hasSalt
+      ? await env.DB.prepare(
+          "SELECT email, password_hash, salt FROM users WHERE email = ?"
+        ).bind(email).first()
+      : await env.DB.prepare(
+          "SELECT email, password_hash FROM users WHERE email = ?"
+        ).bind(email).first();
+
     if (!row) return json({ error: "用户不存在" }, 404);
 
-    // 校验旧密（支持 pbkdf2 + 兼容旧格式）
+    // 校验旧密码（支持 pbkdf2 标准串；兼容旧 sha256 / 明文）
     const ok = await verifyPassword(old_password, row.password_hash, row.salt);
     if (!ok) return json({ error: "请输入正确的当前密码" }, 401);
 
-    // 生成新密（PBKDF2-SHA256）
+    // 生成新密码（PBKDF2-SHA256；单列方案把完整 pbkdf2$iter$salt$hash 写进 password_hash 即可）
     const { hash, salt } = await pbkdf2Hash(new_password);
 
-    // 兼容表结构是否有 salt 列
-    try {
+    if (hasSalt) {
       await env.DB.prepare(
         "UPDATE users SET password_hash = ?, salt = ? WHERE email = ?"
       ).bind(hash, salt, email).run();
-    } catch {
+    } else {
       await env.DB.prepare(
         "UPDATE users SET password_hash = ? WHERE email = ?"
       ).bind(hash, email).run();
@@ -53,7 +56,14 @@ function json(obj, status = 200) {
   });
 }
 
-// ===== 密码工具 =====
+// ---------- 工具：表结构探测 ----------
+async function tableHasColumn(env, table, column) {
+  const res = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
+  const cols = (res?.results || []).map(r => String(r.name || "").toLowerCase());
+  return cols.includes(String(column).toLowerCase());
+}
+
+// ---------- 工具：PBKDF2 ----------
 async function pbkdf2Hash(password, iter = 100_000) {
   const enc = new TextEncoder();
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -61,16 +71,18 @@ async function pbkdf2Hash(password, iter = 100_000) {
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iter }, key, 256);
   const hash = bufToBase64(bits);
   const saltB64 = bufToBase64(salt.buffer);
+  // 单列模式：把完整串写进 password_hash；多列模式：同时写 salt 列
   return { hash: `pbkdf2$${iter}$${saltB64}$${hash}`, salt: saltB64 };
 }
 
 async function verifyPassword(input, storedHash, saltB64) {
   if (!storedHash) return false;
 
+  // 新格式：pbkdf2$iter$salt$hash
   if (storedHash.startsWith("pbkdf2$")) {
-    const [ , iterStr, saltB64InHash, hashInHash ] = storedHash.split("$");
+    const [ , iterStr, saltInHash, hashInHash ] = storedHash.split("$");
     const iter = parseInt(iterStr, 10);
-    const salt = base64ToBuf(saltB64InHash);
+    const salt = base64ToBuf(saltInHash);
     const enc = new TextEncoder();
     const key = await crypto.subtle.importKey("raw", enc.encode(input), "PBKDF2", false, ["deriveBits"]);
     const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iter }, key, 256);
@@ -78,14 +90,17 @@ async function verifyPassword(input, storedHash, saltB64) {
     return subtleEqual(calc, hashInHash);
   }
 
+  // 兼容：旧实现 sha256(password + salt)
   if (saltB64) {
     const calc = await sha256b64(input + saltB64);
     return subtleEqual(calc, storedHash);
   }
 
+  // 兼容：纯 sha256(password)
   const s1 = await sha256b64(input);
   if (subtleEqual(s1, storedHash)) return true;
 
+  // 最后兜底：明文（别再这样存了）
   return input === storedHash;
 }
 
