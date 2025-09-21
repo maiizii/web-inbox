@@ -21,6 +21,7 @@ export default function BlockEditorAuto({
 }) {
   const toast = useToast();
 
+  /* ---------- 响应式判断 ---------- */
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 768px)").matches
@@ -37,6 +38,7 @@ export default function BlockEditorAuto({
   const [mobileView, setMobileView] = useState("edit"); // edit | preview
   useEffect(() => { if (!isMobile) setMobileView("edit"); }, [isMobile]);
 
+  /* ---------- 编辑状态 ---------- */
   const [content, setContent] = useState(block?.content || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -56,13 +58,13 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
 
+  /* ---------- 引用 ---------- */
   const splitContainerRef   = useRef(null);
   const editorScrollRef     = useRef(null);
   const previewScrollRef    = useRef(null);
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
-  const selectionRef = useRef({ start: null, end: null });
   const lastPersisted = useRef({ content: "" });
   const currentBlockIdRef = useRef(block?.id || null);
 
@@ -74,12 +76,14 @@ export default function BlockEditorAuto({
   const isSyncingScrollRef    = useRef(false);
   const overflowCheckTimerRef = useRef(null);
 
+  /* ---------- 衍生状态 ---------- */
   const dirty = !!block && content !== lastPersisted.current.content;
   const derivedTitle = (block?.content || "").split("\n")[0].slice(0, 64) || "(空)";
   const hist   = historyStoreRef.current.get(block?.id) || null;
   const canUndo = hist ? hist.index > 0 : false;
   const canRedo = hist ? hist.index < hist.stack.length - 1 : false;
 
+  /* ---------- 工具函数 ---------- */
   function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
   function escapeHtml(str) {
     return String(str)
@@ -106,6 +110,7 @@ export default function BlockEditorAuto({
     setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
   }
 
+  /* ---------- 历史栈（撤销/重做） ---------- */
   function ensureHistory(blockId, init) {
     if (!blockId) return;
     if (!historyStoreRef.current.has(blockId)) {
@@ -153,6 +158,7 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
+  /* ---------- 初始&同步 ---------- */
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
@@ -174,6 +180,26 @@ export default function BlockEditorAuto({
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
+  /* ---------- 自动保存 ---------- */
+  async function doSave() {
+    if (!block || block.optimistic || !dirty) return;
+    const saveId = block.id;
+    setSaving(true); setError("");
+    const payload = { content };
+    try {
+      onChange && onChange(block.id, { content });
+      let real;
+      try { real = await onImmediateSave(block.id, payload); }
+      catch (err) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err); else throw err; }
+      if (currentBlockIdRef.current === saveId) lastPersisted.current = { content };
+    } catch (err) { if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败"); }
+    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); } }
+  }
+  const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
+  useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
+  function onBlur() { flushSave(); }
+
+  /* ---------- 行号/滚动/溢出 ---------- */
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
@@ -206,40 +232,7 @@ export default function BlockEditorAuto({
   }
   useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
-  async function doSave() {
-    if (!block || block.optimistic || !dirty) return;
-    const saveId = block.id;
-    setSaving(true); setError("");
-    const payload = { content };
-    try {
-      onChange && onChange(block.id, { content });
-      let real;
-      try { real = await onImmediateSave(block.id, payload); }
-      catch (err) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err); else throw err; }
-      if (currentBlockIdRef.current === saveId) lastPersisted.current = { content };
-    } catch (err) { if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败"); }
-    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); } }
-  }
-  const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
-  useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
-  function onBlur() { flushSave(); }
-  function handleContentChange(v) { setContent(v); updateLineNums(v); updatePreview(v); pushHistory(v); detectOverflow(); }
-
-  const handlePaste = useCallback(async e => {
-    if (!block) return;
-    const items = Array.from(e.clipboardData.items).filter(it => it.type.startsWith("image/"));
-    if (!items.length) return;
-    e.preventDefault();
-    for (const it of items) { const f = it.getAsFile(); if (f) await uploadOne(f); }
-  }, [block]);
-  const handleDrop = useCallback(async e => {
-    if (!block) return;
-    e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
-    if (!files.length) return;
-    for (const f of files) await uploadOne(f);
-  }, [block]);
-
+  /* ---------- 图片上传（粘贴/拖拽） ---------- */
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -281,7 +274,22 @@ export default function BlockEditorAuto({
       toast.push(err.message || "图片上传失败", { type: "error" });
     }
   }
+  const handlePaste = useCallback(async e => {
+    if (!block) return;
+    const items = Array.from(e.clipboardData.items).filter(it => it.type.startsWith("image/"));
+    if (!items.length) return;
+    e.preventDefault();
+    for (const it of items) { const f = it.getAsFile(); if (f) await uploadOne(f); }
+  }, [block]);
+  const handleDrop = useCallback(async e => {
+    if (!block) return;
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+    if (!files.length) return;
+    for (const f of files) await uploadOne(f);
+  }, [block]);
 
+  /* ---------- Tab 缩进 ---------- */
   function handleIndentKey(e) {
     if (e.key !== "Tab") return;
     const ta = textareaRef.current; if (!ta) return;
@@ -319,6 +327,7 @@ export default function BlockEditorAuto({
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
 
+  /* ---------- 分割条拖拽 & 同步滚动（桌面端） ---------- */
   function startDividerDrag(e) {
     if (!showPreview || isMobile) return;
     e.preventDefault();
@@ -356,86 +365,84 @@ export default function BlockEditorAuto({
   function resetSplit() { setSplitRatio(0.5); const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal"; localStorage.setItem(key, "0.5"); }
   useEffect(() => () => { if (draggingDivider) stopDividerDrag(); }, [draggingDivider]);
 
-  /** ---------- 顶部工具条 ---------- */
+  useEffect(() => {
+    if (!showPreview || isMobile) return;
+    const ta = textareaRef.current, pv = previewScrollRef.current;
+    if (!ta || !pv) return;
+    function syncPreviewScroll() {
+      if (!syncScrollEnabled || isSyncingScrollRef.current) return;
+      isSyncingScrollRef.current = true;
+      pv.scrollTop =
+        (ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight)) *
+        (pv.scrollHeight - pv.clientHeight);
+      setTimeout(() => { isSyncingScrollRef.current = false; }, 0);
+    }
+    function syncEditorScroll() {
+      if (!syncScrollEnabled || isSyncingScrollRef.current) return;
+      isSyncingScrollRef.current = true;
+      ta.scrollTop =
+        (pv.scrollTop / Math.max(1, pv.scrollHeight - pv.clientHeight)) *
+        (ta.scrollHeight - ta.clientHeight);
+      setTimeout(() => { isSyncingScrollRef.current = false; }, 0);
+    }
+    ta.addEventListener("scroll", syncPreviewScroll);
+    pv.addEventListener("scroll", syncEditorScroll);
+    return () => {
+      ta.removeEventListener("scroll", syncPreviewScroll);
+      pv.removeEventListener("scroll", syncEditorScroll);
+    };
+  }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
+
+  /* ---------- 内容变化 ---------- */
+  function handleContentChange(v) { setContent(v); updateLineNums(v); updatePreview(v); pushHistory(v); detectOverflow(); }
+
+  /* ---------- 顶部工具条 ---------- */
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
       style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}
     >
-      {/* 左侧：移动端为“图标化”紧凑按钮组；PC 端显示标题 */}
+      {/* 左侧：移动端为图标化；桌面端显示标题与控制 */}
       <div className="flex items-center gap-2">
         {isMobile ? (
           <>
             {onBackToList && (
-              <button
-                type="button"
-                onClick={onBackToList}
-                className="btn-outline-modern !p-2"
-                title="返回列表"
-              >
+              <button type="button" onClick={onBackToList} className="btn-outline-modern !p-2" title="返回列表">
                 <ArrowLeft size={16} />
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => restoreHistory(-1)}
-              disabled={!canUndo}
-              className="btn-outline-modern !p-2 disabled:opacity-40"
-              title="撤销"
-            >
-              <Undo2 size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => restoreHistory(+1)}
-              disabled={!canRedo}
-              className="btn-outline-modern !p-2 disabled:opacity-40"
-              title="重做"
-            >
-              <Redo2 size={16} />
-            </button>
+            <button type="button" onClick={() => restoreHistory(-1)} disabled={!canUndo} className="btn-outline-modern !p-2 disabled:opacity-40" title="撤销"><Undo2 size={16} /></button>
+            <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo} className="btn-outline-modern !p-2 disabled:opacity-40" title="重做"><Redo2 size={16} /></button>
             {mobileView === "edit" ? (
-              <button
-                type="button"
-                onClick={() => setMobileView("preview")}
-                className="btn-outline-modern !p-2"
-                title="预览"
-              >
-                <Eye size={16} />
-              </button>
+              <button type="button" onClick={() => setMobileView("preview")} className="btn-outline-modern !p-2" title="预览"><Eye size={16} /></button>
             ) : (
-              <button
-                type="button"
-                onClick={() => setMobileView("edit")}
-                className="btn-outline-modern !p-2"
-                title="返回编辑"
-              >
-                <EyeOff size={16} />
-              </button>
+              <button type="button" onClick={() => setMobileView("edit")} className="btn-outline-modern !p-2" title="返回编辑"><EyeOff size={16} /></button>
             )}
           </>
         ) : (
-          <div
-            className="text-lg font-semibold truncate select-none"
-            style={{ color: "var(--color-text)" }}
-          >
-            {derivedTitle}
-          </div>
+          <>
+            <div className="text-lg font-semibold truncate select-none" style={{ color: "var(--color-text)" }}>
+              {derivedTitle}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <button type="button" onClick={() => restoreHistory(-1)} disabled={!canUndo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="撤销 (Ctrl+Z)"><Undo2 size={16} /></button>
+              <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="重做 (Ctrl+Y)"><Redo2 size={16} /></button>
+              {showPreview && (
+                <>
+                  <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-1.5" title="同步滚动开/关">{syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}</button>
+                  <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "上下预览" : "左右预览"}</button>
+                </>
+              )}
+              <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">{showPreview ? "隐藏预览" : "显示预览"}</button>
+            </div>
+          </>
         )}
       </div>
 
-      {/* 右侧：状态 + 删除。状态在小屏隐藏避免挤压 */}
+      {/* 右侧：保存状态（md 以上可见） + 删除 */}
       <div className="flex items-center gap-2">
         <div className="hidden md:block text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
-          {saving ? (
-            "保存中"
-          ) : error ? (
-            <button onClick={doSave} className="text-red-500 hover:underline">重试</button>
-          ) : dirty ? (
-            "待保存"
-          ) : (
-            "已保存"
-          )}
+          {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
         </div>
         <button
           onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }}
@@ -447,7 +454,7 @@ export default function BlockEditorAuto({
     </div>
   );
 
-  /** ---------- 无选中 ---------- */
+  /* ---------- 没有选中 ---------- */
   if (!block) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-slate-400 dark:text-slate-500">
@@ -458,29 +465,17 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  /** ---------- 移动端单屏编辑/预览 ---------- */
+  /* ---------- 移动端：单屏编辑/预览 ---------- */
   if (isMobile) {
     return (
-      <div
-        className="h-full flex flex-col overflow-hidden"
-        onPaste={handlePaste}
-        onDrop={handleDrop}
-        onDragOver={e => e.preventDefault()}
-      >
+      <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
         {TopBar}
         {mobileView === "edit" ? (
           <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
             <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
               <div className="editor-inner">
-                {/* <md 隐藏行号，避免拥挤 */}
                 <div className="editor-line-numbers hidden md:block">
-                  <pre
-                    ref={lineNumbersInnerRef}
-                    className="editor-line-numbers-inner"
-                    aria-hidden="true"
-                  >
-                    {lineNumbers}
-                  </pre>
+                  <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
                 </div>
                 <div className="editor-text-wrapper">
                   <textarea
@@ -490,16 +485,10 @@ export default function BlockEditorAuto({
                     disabled={disabledByCreation}
                     placeholder="输入文本 (可粘贴图片)"
                     wrap="soft"
-                    onChange={e => { handleContentChange(e.target.value); }}
+                    onChange={e => { setContent(e.target.value); updateLineNums(e.target.value); updatePreview(e.target.value); pushHistory(e.target.value); detectOverflow(); }}
                     onBlur={onBlur}
                     onKeyDown={handleKeyDown}
-                    style={{
-                      overflow: "auto",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      background: "var(--color-surface)",
-                      color: "var(--color-text)"
-                    }}
+                    style={{ overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--color-surface)", color: "var(--color-text)" }}
                   />
                 </div>
               </div>
@@ -508,10 +497,7 @@ export default function BlockEditorAuto({
         ) : (
           <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
             <div ref={previewScrollRef} className="preview-scroll custom-scroll">
-              <div
-                className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
+              <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
         )}
@@ -519,36 +505,18 @@ export default function BlockEditorAuto({
     );
   }
 
-  /** ---------- 桌面端分屏编辑 ---------- */
+  /* ---------- 桌面端：分屏编辑 ---------- */
   return (
-    <div
-      className="h-full flex flex-col overflow-hidden"
-      onPaste={handlePaste}
-      onDrop={handleDrop}
-      onDragOver={e => e.preventDefault()}
-    >
+    <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
       {TopBar}
       <div
         ref={splitContainerRef}
-        className={`editor-split-root flex-1 min-h-0 flex ${
-          showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"
-        } overflow-hidden`}
+        className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
       >
-        <div
-          className="editor-pane rounded-md"
-          style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}
-        >
+        <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}>
           <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
             <div className="editor-inner">
-              <div className="editor-line-numbers">
-                <pre
-                  ref={lineNumbersInnerRef}
-                  className="editor-line-numbers-inner"
-                  aria-hidden="true"
-                >
-                  {lineNumbers}
-                </pre>
-              </div>
+              <div className="editor-line-numbers"><pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre></div>
               <div className="editor-text-wrapper">
                 <textarea
                   ref={textareaRef}
@@ -578,10 +546,7 @@ export default function BlockEditorAuto({
             />
             <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
               <div ref={previewScrollRef} className="preview-scroll custom-scroll">
-                <div
-                  className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-                  dangerouslySetInnerHTML={{ __html: previewHtml }}
-                />
+                <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
               </div>
             </div>
           </>
