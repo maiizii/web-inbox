@@ -1,18 +1,18 @@
 import React, { useState } from "react";
-import { X, Loader2, ShieldCheck } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import { useToast } from "../../hooks/useToast.jsx";
-import { apiChangePassword, apiLogin, apiMe } from "../../api/cloudflare.js";
+import { apiChangePassword } from "../../api/cloudflare.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 export default function ChangePasswordModal({ open, onClose }) {
   const toast = useToast();
   const { user } = useAuth();
+
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [dbg, setDbg] = useState("");
 
   if (!open) return null;
 
@@ -24,57 +24,21 @@ export default function ChangePasswordModal({ open, onClose }) {
     return "";
   }
 
-  // 调试动作 1：确认登录态是谁
-  async function printIdentity() {
+  async function submit() {
+    const v = validate();
+    if (v) { setErr(v); return; }
+    setErr(""); setLoading(true);
     try {
-      const me = await apiMe();
-      const email = me?.email || user?.email || "(unknown)";
-      toast.push("当前登录：" + email, { type: "info" });
-      setDbg(prev => `[ME] ${email}\n` + prev);
+      await apiChangePassword(oldPwd, newPwd, user?.email);
+      toast.push("密码已更新", { type: "success" });
+      setOldPwd(""); setNewPwd(""); setConfirmPwd("");
+      onClose && onClose();
     } catch (e) {
-      setDbg(prev => `[ME-ERR] ${e?.message || e}\n` + prev);
-      toast.push("无法获取身份：" + (e?.message || ""), { type: "error" });
+      setErr(e?.message || "请求失败");
+    } finally {
+      setLoading(false);
     }
   }
-
-  // 调试动作 2：仅验证旧密码是否正确（用现有登录接口校验凭据）
-  async function verifyOldPassword() {
-    setErr("");
-    try {
-      const email = user?.email;
-      if (!email) throw new Error("无法识别当前账号");
-      await apiLogin(email, oldPwd); // 成功=旧密码正确；不会破坏现态
-      toast.push("旧密码正确", { type: "success" });
-      setDbg(prev => `[VERIFY] OK for ${email}\n` + prev);
-    } catch (e) {
-      setDbg(prev => `[VERIFY-ERR] ${e?.message || e}\n` + prev);
-      setErr("请输入正确的当前密码");
-    }
-  }
-
-// 替换 submit() 函数
-async function submit() {
-  const v = validate();
-  if (v) { setErr(v); return; }
-  setErr(""); setLoading(true);
-  try {
-    // 原来：const r = await apiChangePassword(oldPwd, newPwd);
-    const r = await apiChangePassword(oldPwd, newPwd, user?.email);
-
-    if (r?._trace) setDbg(prev => `[TRACE]\n${r._trace}\n` + prev);
-    toast.push("密码已更新", { type: "success" });
-    setOldPwd(""); setNewPwd(""); setConfirmPwd("");
-    onClose && onClose();
-  } catch (e) {
-    const msg = e?.message || "请求失败";
-    setErr(msg);
-    const tr = e?._trace || "";
-    setDbg(prev => `[CHANGE-ERR] ${msg}\n${tr ? `[TRACE]\n${tr}\n` : ""}` + prev);
-  } finally {
-    setLoading(false);
-  }
-}
-
 
   return (
     <div
@@ -102,16 +66,6 @@ async function submit() {
         </div>
 
         <div className="px-4 py-4 space-y-3">
-          {/* 调试区：一键确认身份 / 校验旧密 */}
-          <div className="flex items-center gap-2">
-            <button className="btn-outline-modern !px-2.5 !py-1.5" onClick={printIdentity}>
-              打印身份
-            </button>
-            <button className="btn-outline-modern !px-2.5 !py-1.5" onClick={verifyOldPassword}>
-              <ShieldCheck size={14} className="mr-1" /> 验证旧密码
-            </button>
-          </div>
-
           <div>
             <div className="text-xs mb-1 text-slate-500 dark:text-slate-300">当前密码</div>
             <input
@@ -146,11 +100,6 @@ async function submit() {
           </div>
 
           {err && <div className="text-sm text-red-600 dark:text-red-400">{err}</div>}
-
-          {/* 调试输出 */}
-          {dbg && (
-            <pre className="api-debug-entry mt-2">{dbg}</pre>
-          )}
         </div>
 
         <div
