@@ -18,7 +18,7 @@ export default function Sidebar({
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
-  // 调整为与编辑器同色系（深蓝/石板系）
+  // 与编辑器同系色
   const GAP_BG   = isDark ? "var(--color-bg)" : "#ffffff";              // 外层缝隙
   const BOX_BG   = isDark ? "var(--color-surface)" : "#ffffff";         // 内部块
   const CARD_BG  = isDark ? "var(--color-surface-alt)" : "#ffffff";     // 未选中卡片
@@ -27,7 +27,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className="w-72 shrink-0 rounded-lg overflow-hidden border-r border-slate-200 dark:border-slate-700 flex flex-col"
+      className="w-full md:w-72 shrink-0 rounded-lg overflow-hidden md:border-r border-slate-200 dark:border-slate-700 flex flex-col"
       style={{ backgroundColor: GAP_BG }}
     >
       {/* 顶部工具条 */}
@@ -43,7 +43,6 @@ export default function Sidebar({
             <Plus size={16} />
             新建
           </button>
-          {/* 放大一些 */}
           <div className="text-[12.5px] md:text-[13px] font-medium text-slate-500 dark:text-slate-200 ml-auto">
             可拖拽排序
           </div>
