@@ -52,7 +52,7 @@ export default function AuthPage() {
               className="h-full object-contain w-auto mx-auto"
             />
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400" text-center">
+          <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
             {mode === "login" ? "登录到你的WEB TIPS" : "创建你的账号（需要邀请码）"}
           </p>
         </div>
