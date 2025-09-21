@@ -100,18 +100,23 @@ export default function BlockEditorAuto({
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
-  function renderPlainWithImages(raw) {
-    if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
-    const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
-    let out = "", last = 0, m;
-    while ((m = re.exec(raw)) !== null) {
-      out += escapeHtml(raw.slice[last, m.index]);
-      out += `<img class="preview-img" src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}" loading="lazy" />`;
-      last = m.index + m[0].length;
-    }
-    out += escapeHtml(raw.slice(last));
-    return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
+function renderPlainWithImages(raw) {
+  if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
+  // 允许可选的 "title" 部分：![alt](url "title")
+  const re = /!\[([^\]]*?)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(raw)) !== null) {
+    // 关键修复：使用 slice( , ) 调用而不是 slice[ , ]
+    out += escapeHtml(raw.slice(last, m.index));
+    const alt = m[1] ?? "";
+    const url = m[2] ?? "";
+    out += `<img class="preview-img" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
+    last = m.index + m[0].length;
   }
+  out += escapeHtml(raw.slice(last));
+  return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
+}
+
   function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
 
   // 历史（撤销/重做）
