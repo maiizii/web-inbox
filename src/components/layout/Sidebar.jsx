@@ -1,6 +1,6 @@
 // src/components/layout/Sidebar.jsx
 import React from "react";
-import { Plus, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext.jsx";
 
 export default function Sidebar({
@@ -13,12 +13,12 @@ export default function Sidebar({
   draggingId,
   onDragStart,
   onDragOver,
-  onDrop,
-  onQuickMove
+  onDrop
 }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
+  // 与编辑器同色系
   const GAP_BG   = isDark ? "var(--color-bg)" : "#ffffff";
   const BOX_BG   = isDark ? "var(--color-surface)" : "#ffffff";
   const CARD_BG  = isDark ? "var(--color-surface-alt)" : "#ffffff";
@@ -27,7 +27,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className="w-72 shrink-0 rounded-lg overflow-hidden border-r border-slate-200 dark:border-slate-700 flex flex-col"
+      className="w-full md:w-72 shrink-0 rounded-lg overflow-hidden border-r border-slate-200 dark:border-slate-700 flex flex-col"
       style={{ backgroundColor: GAP_BG }}
     >
       {/* 顶部工具条 */}
@@ -36,12 +36,18 @@ export default function Sidebar({
         style={{ backgroundColor: BOX_BG }}
       >
         <div className="flex items-center gap-2">
-          <button onClick={onCreate} className="btn-primary-modern !px-3 !py-1 text-sm rounded-md">
+          <button
+            onClick={onCreate}
+            className="btn-primary-modern !px-3 !py-1 text-sm rounded-md"
+          >
             <Plus size={16} />
             新建
           </button>
+
+          {/* PC: 可拖拽排序 / Mobile: 可调整排序 */}
           <div className="text-[12.5px] md:text-[13px] font-medium text-slate-500 dark:text-slate-200 ml-auto">
-            可调整排序
+            <span className="hidden md:inline">可拖拽排序</span>
+            <span className="md:hidden">可调整排序</span>
           </div>
         </div>
       </div>
@@ -83,37 +89,18 @@ export default function Sidebar({
               onDragStart={() => onDragStart && onDragStart(b.id)}
               onDragOver={e => onDragOver && onDragOver(e, b.id)}
               className={`${base} ${isSel ? selCls : unselCls} ${isDragging ? "opacity-60 ring-2 ring-indigo-400" : ""}`}
-              style={ isSel ? {} : { backgroundColor: CARD_BG, borderColor: BORDER } }
+              style={isSel ? {} : { backgroundColor: CARD_BG, borderColor: BORDER }}
               onMouseEnter={e => { if (!isSel) e.currentTarget.style.backgroundColor = HOVER_BG; }}
               onMouseLeave={e => { if (!isSel) e.currentTarget.style.backgroundColor = CARD_BG; }}
               onClick={() => onSelect && onSelect(b.id)}
             >
-              <div className="px-3 pt-2 pb-1 flex items-center gap-2">
-                <div className={`font-medium truncate text-sm flex-1 ${isSel ? "text-white" : "text-slate-800 dark:text-slate-300"}`}>
+              <div className="px-3 pt-2 pb-1">
+                <div className={`font-medium truncate text-sm ${isSel ? "text-white" : "text-slate-800 dark:text-slate-300"}`}>
                   {derivedTitle}
                 </div>
-
-                {/* 移动端：右侧内联上/下移动按钮 */}
-                <div className="flex sm:hidden items-center gap-1">
-                  <button
-                    className="btn-outline-modern !px-2 !py-1"
-                    onClick={e => { e.stopPropagation(); onQuickMove && onQuickMove(b.id, -1); }}
-                    title="上移"
-                  >
-                    <ArrowUp size={14} />
-                  </button>
-                  <button
-                    className="btn-outline-modern !px-2 !py-1"
-                    onClick={e => { e.stopPropagation(); onQuickMove && onQuickMove(b.id, +1); }}
-                    title="下移"
-                  >
-                    <ArrowDown size={14} />
-                  </button>
+                <div className={`${isSel ? "text-white/85" : "text-slate-400 dark:text-slate-200"} text-[10px] mt-1`}>
+                  最后编辑：{lastEdit}
                 </div>
-              </div>
-
-              <div className={`px-3 pb-2 text-[10px] ${isSel ? "text-white/85" : "text-slate-400 dark:text-slate-200"}`}>
-                最后编辑：{lastEdit}
               </div>
             </div>
           );
