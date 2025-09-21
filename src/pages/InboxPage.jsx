@@ -40,26 +40,6 @@ export default function InboxPage() {
   const [manualOrder, setManualOrder] = useState(null);
   const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
 
-  // —— 移动端“列表/编辑”两屏
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== "undefined"
-      ? window.matchMedia("(max-width: 768px)").matches
-      : false
-  );
-  const [mobileStage, setMobileStage] = useState("list"); // list | editor
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(max-width: 768px)");
-    const handler = () => {
-      const now = mq.matches;
-      setIsMobile(now);
-      if (now) setMobileStage("list");
-    };
-    handler();
-    mq.addEventListener?.("change", handler);
-    return () => mq.removeEventListener?.("change", handler);
-  }, []);
-
   async function loadBlocks() {
     try {
       setLoading(true);
@@ -73,6 +53,7 @@ export default function InboxPage() {
       setLoading(false);
     }
   }
+
   useEffect(() => { loadBlocks(); }, []);
 
   const filteredBlocks = useMemo(() => {
@@ -146,8 +127,6 @@ export default function InboxPage() {
         apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
         return newList;
       });
-
-      if (isMobile) setMobileStage("editor");
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
@@ -163,7 +142,6 @@ export default function InboxPage() {
       if (selectedId === id) {
         const remain = snapshot.filter(b => b.id !== id);
         setSelectedId(remain.length ? remain[0].id : null);
-        if (isMobile) setMobileStage("list");
       }
       if (lastEditedBlockId === id) setLastEditedBlockId(null);
       if (manualOrder) setManualOrder(manualOrder.filter(i => i !== id));
@@ -172,29 +150,6 @@ export default function InboxPage() {
       setBlocks(snapshot);
     }
   }
-
-  // —— 移动端：卡片右侧上下按钮
-  function moveBlock(id, dir) {
-    let newOrder = null;
-    setBlocks(prev => {
-      const idx = prev.findIndex(b => b.id === id);
-      if (idx < 0) return prev;
-      const ni = idx + dir;
-      if (ni < 0 || ni >= prev.length) return prev;
-      const arr = [...prev];
-      [arr[idx], arr[ni]] = [arr[ni], arr[idx]];
-      newOrder = arr.map((b, i) => ({ id: b.id, position: i + 1 }));
-      setManualOrder(arr.map(b => b.id));
-      return arr;
-    });
-    if (newOrder) {
-      apiReorderBlocks(newOrder)
-        .then(() => toast.push("顺序已保存", { type: "success" }))
-        .catch(e => toast.push(e.message || "保存顺序失败", { type: "error" }));
-    }
-  }
-  const onMoveUp   = (id) => moveBlock(id, -1);
-  const onMoveDown = (id) => moveBlock(id, +1);
 
   function onDragStart(id) { setDraggingId(id); }
   function onDragOver(e, overId) {
@@ -226,66 +181,30 @@ export default function InboxPage() {
     }
   }
 
-  function handleSelect(id) {
-    setSelectedId(id);
-    if (isMobile) setMobileStage("editor");
-  }
-
   return (
     <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
-      {isMobile ? (
-        mobileStage === "list" ? (
-          <Sidebar
-            blocks={sortedBlocks}
-            selectedId={selectedId}
-            onSelect={handleSelect}
-            onCreate={createEmptyBlock}
-            query={q}
-            onQueryChange={setQ}
-            draggingId={draggingId}
-            onDragStart={onDragStart}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            onMoveUp={onMoveUp}
-            onMoveDown={onMoveDown}
-          />
-        ) : (
-          <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
-            <BlockEditorAuto
-              block={selected}
-              onChange={optimisticChange}
-              onDelete={deleteBlock}
-              onImmediateSave={persistUpdate}
-              onBackToList={() => setMobileStage("list")}
-            />
-          </div>
-        )
-      ) : (
-        <>
-          <Sidebar
-            blocks={sortedBlocks}
-            selectedId={selectedId}
-            onSelect={handleSelect}
-            onCreate={createEmptyBlock}
-            query={q}
-            onQueryChange={setQ}
-            draggingId={draggingId}
-            onDragStart={onDragStart}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            onMoveUp={onMoveUp}
-            onMoveDown={onMoveDown}
-          />
-          <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
-            <BlockEditorAuto
-              block={selected}
-              onChange={optimisticChange}
-              onDelete={deleteBlock}
-              onImmediateSave={persistUpdate}
-            />
-          </div>
-        </>
-      )}
+      <Sidebar
+        blocks={sortedBlocks}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        onCreate={createEmptyBlock}
+        query={q}
+        onQueryChange={setQ}
+        draggingId={draggingId}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        className="bg-white dark:bg-slate-800"
+      />
+      <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
+        <BlockEditorAuto
+          block={selected}
+          onChange={optimisticChange}
+          onDelete={deleteBlock}
+          onImmediateSave={persistUpdate}
+          searchQuery={q}   // 传给编辑/预览高亮
+        />
+      </div>
     </div>
   );
 }
