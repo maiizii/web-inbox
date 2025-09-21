@@ -40,7 +40,7 @@ export default function InboxPage() {
   const [manualOrder, setManualOrder] = useState(null);
   const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
 
-  // —— 响应式：移动端“列表/编辑”两屏
+  // —— 移动端“列表/编辑”两屏
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 768px)").matches
@@ -53,7 +53,6 @@ export default function InboxPage() {
     const handler = () => {
       const now = mq.matches;
       setIsMobile(now);
-      // 尺寸变化时，回到列表，避免布局残留
       if (now) setMobileStage("list");
     };
     handler();
@@ -174,6 +173,29 @@ export default function InboxPage() {
     }
   }
 
+  // —— 移动端：卡片右侧上下按钮
+  function moveBlock(id, dir) {
+    let newOrder = null;
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === id);
+      if (idx < 0) return prev;
+      const ni = idx + dir;
+      if (ni < 0 || ni >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[ni]] = [arr[ni], arr[idx]];
+      newOrder = arr.map((b, i) => ({ id: b.id, position: i + 1 }));
+      setManualOrder(arr.map(b => b.id));
+      return arr;
+    });
+    if (newOrder) {
+      apiReorderBlocks(newOrder)
+        .then(() => toast.push("顺序已保存", { type: "success" }))
+        .catch(e => toast.push(e.message || "保存顺序失败", { type: "error" }));
+    }
+  }
+  const onMoveUp   = (id) => moveBlock(id, -1);
+  const onMoveDown = (id) => moveBlock(id, +1);
+
   function onDragStart(id) { setDraggingId(id); }
   function onDragOver(e, overId) {
     e.preventDefault();
@@ -224,6 +246,8 @@ export default function InboxPage() {
             onDragStart={onDragStart}
             onDragOver={onDragOver}
             onDrop={onDrop}
+            onMoveUp={onMoveUp}
+            onMoveDown={onMoveDown}
           />
         ) : (
           <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
@@ -249,6 +273,8 @@ export default function InboxPage() {
             onDragStart={onDragStart}
             onDragOver={onDragOver}
             onDrop={onDrop}
+            onMoveUp={onMoveUp}
+            onMoveDown={onMoveDown}
           />
           <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
             <BlockEditorAuto
