@@ -560,70 +560,76 @@ export default function BlockEditorAuto({
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
   // 移动端：单屏编辑/预览（去掉行号）
-  if (isMobile) {
-    return (
-      <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
-        {TopBar}
-        {mobileView === "edit" ? (
-          <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
-            <div
-              className="editor-scroll custom-scroll"
-              ref={editorScrollRef}
-              style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
-            >
-              <div className="editor-inner">
-                {/* 移动端：不渲染行号 */}
-                <div className="editor-text-wrapper">
-                  <textarea
-                    ref={textareaRef}
-                    className="editor-textarea custom-scroll"
-                    value={content}
-                    disabled={disabledByCreation}
-                    placeholder="输入文本 (可粘贴图片)"
-                    wrap="soft"
-                    onChange={e => { handleContentChange(e.target.value); }}
-                    onBlur={onBlur}
-                    onKeyDown={handleKeyDown}
-                    style={{
-                      flex: "1 1 0",
-                      minHeight: 0,
-                      overflowX: "hidden",
-                      overflowY: editorCanScroll ? "auto" : "hidden",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      background: "var(--color-surface)",
-                      color: "var(--color-text)",
-                      paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)"
-                    }}
-                  />
-                </div>
+if (isMobile) {
+  return (
+    <div
+      className="h-full flex flex-col overflow-hidden"
+      onPaste={handlePaste}
+      onDrop={handleDrop}
+      onDragOver={e => e.preventDefault()}
+    >
+      {TopBar}
+      {mobileView === "edit" ? (
+        <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
+          <div
+            className="editor-scroll custom-scroll"
+            ref={editorScrollRef}
+            style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
+          >
+            <div className="editor-inner">
+              {/* 移动端：不渲染行号 */}
+              <div className="editor-text-wrapper">
+                <textarea
+                  ref={textareaRef}
+                  className="editor-textarea custom-scroll"
+                  value={content}
+                  disabled={disabledByCreation}
+                  placeholder="输入文本 (可粘贴图片)"
+                  wrap="soft"
+                  onChange={e => { handleContentChange(e.target.value); }}
+                  onBlur={onBlur}
+                  onKeyDown={handleKeyDown}
+                  style={{
+                    flex: "1 1 0",
+                    minHeight: 0,
+                    overflowX: "hidden",
+                    overflowY: editorCanScroll ? "auto" : "hidden",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    background: "var(--color-surface)",
+                    color: "var(--color-text)",
+                    paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)"
+                  }}
+                />
               </div>
             </div>
           </div>
-        ) : (
-          <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
+        </div>
+      ) : (
+        <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
+          <div
+            ref={previewScrollRef}
+            className="preview-scroll custom-scroll"
+            style={{
+              flex: "1 1 0",
+              minHeight: 0,
+              maxHeight: "100%",
+              overflowX: "hidden",
+              overflowY: previewCanScroll ? "auto" : "hidden",
+              background: "var(--color-surface)"
+            }}
+          >
             <div
-              ref={previewScrollRef}
-              className="preview-scroll custom-scroll"
-              style={{
-                flex: "1 1 0",
-                minHeight: 0,
-                maxHeight: "100%",
-                overflowX: "hidden",
-                overflowY: previewCanScroll ? "auto" : "hidden",
-                background: "var(--color-surface)"
-              }}
-            >
-              <div
-                className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
-            </div>
+              className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
+              dangerouslySetInnerHTML={{ __html: previewHtml }}
+            />
           </div>
-        )}
-      </div>
-    );
-  }
+        </div>
+      )}
+    </div>
+  );
+}
+
 
   // 桌面端：分屏（两个面板都固定在容器内滚动）
   return (
