@@ -58,7 +58,9 @@ async function submit() {
   if (v) { setErr(v); return; }
   setErr(""); setLoading(true);
   try {
-    const r = await apiChangePassword(oldPwd, newPwd);
+    // 原来：const r = await apiChangePassword(oldPwd, newPwd);
+    const r = await apiChangePassword(oldPwd, newPwd, user?.email);
+
     if (r?._trace) setDbg(prev => `[TRACE]\n${r._trace}\n` + prev);
     toast.push("密码已更新", { type: "success" });
     setOldPwd(""); setNewPwd(""); setConfirmPwd("");
