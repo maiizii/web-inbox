@@ -16,7 +16,6 @@ export default function BlockEditorAuto({
   onDelete,
   onImmediateSave,
   safeUpdateFallback,
-  // 新增：移动端单屏编辑支持
   mobileMode = false,
   onMobileBack,
   onMobilePreviewRequest
@@ -375,7 +374,6 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // ===== 顶栏：统一表面色，标题使用主题文本色（暗色可读） =====
   const TopBar = (
     <div
       className="flex items-center gap-3 py-3 px-4 border-b"
@@ -412,7 +410,7 @@ export default function BlockEditorAuto({
     </div>
   );
 
-  // ===== 移动端：仅编辑区，自动换行 =====
+  // ===== 移动端：仅编辑区（强制换行与对比度） =====
   if (mobileMode) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
@@ -429,8 +427,8 @@ export default function BlockEditorAuto({
                   className="editor-textarea custom-scroll"
                   value={content}
                   disabled={disabledByCreation}
-                  placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
-                  // 移动端自动换行
+                  placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab)"
+                  // 关键：覆盖全局 white-space，移动端可见可换行
                   wrap="soft"
                   onChange={e => { handleContentChange(e.target.value); shouldRestoreFocusRef.current = true; userManuallyBlurredRef.current = false; captureSel(); }}
                   onFocus={onContentFocus}
@@ -438,7 +436,13 @@ export default function BlockEditorAuto({
                   onClick={captureSel}
                   onKeyUp={captureSel}
                   onKeyDown={handleKeyDown}
-                  style={{ overflow: "auto" }}
+                  style={{
+                    overflow: "auto",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    background: "var(--color-surface)",
+                    color: "var(--color-text)"
+                  }}
                 />
               </div>
             </div>
@@ -474,7 +478,7 @@ export default function BlockEditorAuto({
                   onClick={captureSel}
                   onKeyUp={captureSel}
                   onKeyDown={handleKeyDown}
-                  style={{ overflow: "auto" }}
+                  style={{ overflow: "auto", background: "var(--color-surface)", color: "var(--color-text)" }}
                 />
               </div>
             </div>
