@@ -181,6 +181,28 @@ export default function InboxPage() {
     }
   }
 
+  // 新增：移动端“上移/下移”
+  async function moveBlock(id, delta) {
+    setBlocks(prev => {
+      const list = [...prev];
+      const idx = list.findIndex(b => b.id === id);
+      if (idx < 0) return prev;
+      const ni = Math.max(0, Math.min(list.length - 1, idx + delta));
+      if (ni === idx) return prev;
+      const [item] = list.splice(idx, 1);
+      list.splice(ni, 0, item);
+      setManualOrder(list.map(b => b.id));
+      setLastEditedBlockId(null);
+      // 异步持久化
+      apiReorderBlocks(list.map((b, i) => ({ id: b.id, position: i + 1 })))
+        .then(() => toast.push("顺序已保存", { type: "success" }))
+        .catch(err => toast.push(err.message || "保存顺序失败", { type: "error" }));
+      return list;
+    });
+  }
+  const onMoveUp  = id => moveBlock(id, -1);
+  const onMoveDown = id => moveBlock(id, +1);
+
   return (
     <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
       <Sidebar
@@ -194,6 +216,8 @@ export default function InboxPage() {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        onMoveUp={onMoveUp}
+        onMoveDown={onMoveDown}
         className="bg-white dark:bg-slate-800"
       />
       <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
@@ -202,7 +226,7 @@ export default function InboxPage() {
           onChange={optimisticChange}
           onDelete={deleteBlock}
           onImmediateSave={persistUpdate}
-          searchQuery={q}   // 传给编辑/预览高亮
+          searchQuery={q}
         />
       </div>
     </div>
