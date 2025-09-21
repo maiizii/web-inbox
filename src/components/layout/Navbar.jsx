@@ -17,13 +17,12 @@ export default function Navbar() {
     catch (e) { toast.push(e.message || "后端异常", { type: "error" }); }
   }
 
-  // 深色页头与编辑器同底色；浅色为半透明白
   const headerStyle = theme === "dark"
     ? { backgroundColor: "var(--color-surface-alt)" }
     : { backgroundColor: "rgba(255,255,255,0.8)" };
 
-  // 图标按钮：中间对齐；悬停样式与“显示/隐藏预览”(btn-outline-modern)一致
-  const iconBtn = "btn-outline-modern inline-flex items-center justify-center !px-2.5 !py-1.5";
+  // 居中+固定方形尺寸；悬停样式与 btn-outline-modern 一致
+  const iconBtn = "btn-outline-modern w-9 h-9 p-0 inline-flex items-center justify-center";
 
   return (
     <>
