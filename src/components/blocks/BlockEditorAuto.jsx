@@ -65,6 +65,9 @@ export default function BlockEditorAuto({
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
+  // 用于“换行后行号对齐”的镜像测量元素
+  const mirrorRef = useRef(null);
+
   const lastPersisted = useRef({ content: "" });
   const currentBlockIdRef = useRef(block?.id || null);
 
@@ -105,10 +108,6 @@ export default function BlockEditorAuto({
     return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
   }
   function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
-  function updateLineNums(txt) {
-    if (!txt) { setLineNumbers("1"); return; }
-    setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
-  }
 
   /* ---------- 历史栈（撤销/重做） ---------- */
   function ensureHistory(blockId, init) {
@@ -146,7 +145,7 @@ export default function BlockEditorAuto({
     const snap = h.stack[next];
     isRestoringHistoryRef.current = true;
     setContent(snap);
-    updateLineNums(snap);
+    updateLineNumsWrapped(snap);   // 换行行号也更新
     updatePreview(snap);
     requestAnimationFrame(() => { isRestoringHistoryRef.current = false; detectOverflow(); });
   }
@@ -158,19 +157,88 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
+  /* ---------- 镜像测量：计算“可视行数”并生成行号 ---------- */
+  function ensureMirrorReady() {
+    if (mirrorRef.current || !textareaRef.current) return;
+    const div = document.createElement("div");
+    mirrorRef.current = div;
+    div.style.position = "absolute";
+    div.style.visibility = "hidden";
+    div.style.pointerEvents = "none";
+    div.style.whiteSpace = "pre-wrap";
+    div.style.wordBreak = "break-word";
+    div.style.left = "-9999px";
+    div.style.top = "-9999px";
+    document.body.appendChild(div);
+  }
+  function syncMirrorMetrics() {
+    const ta = textareaRef.current, m = mirrorRef.current;
+    if (!ta || !m) return;
+    const cs = getComputedStyle(ta);
+    // 用内容宽度来换行：clientWidth - padding
+    const padL = parseFloat(cs.paddingLeft) || 0;
+    const padR = parseFloat(cs.paddingRight) || 0;
+    m.style.width = Math.max(0, ta.clientWidth - padL - padR) + "px";
+    m.style.font = cs.font;
+    m.style.fontFamily = cs.fontFamily;
+    m.style.fontSize = cs.fontSize;
+    m.style.lineHeight = cs.lineHeight;
+    m.style.letterSpacing = cs.letterSpacing;
+    m.style.tabSize = cs.tabSize || "2";
+    // 重要：测量时不要 padding，避免高度被额外放大
+    m.style.padding = "0px";
+  }
+  function computeRowsForLine(line) {
+    const m = mirrorRef.current;
+    if (!m) return 1;
+    m.textContent = line.length ? line : " ";
+    const lh = parseFloat(getComputedStyle(m).lineHeight) || 20;
+    const rows = Math.max(1, Math.round(m.scrollHeight / lh));
+    return rows;
+  }
+  function updateLineNumsWrapped(txt) {
+    // 移动端（或 soft wrap）采用镜像行号；桌面端 wrap=off 仍使用普通行号
+    const ta = textareaRef.current;
+    if (!ta) {
+      setLineNumbers("1");
+      return;
+    }
+    const isSoftWrap = isMobile || ta.getAttribute("wrap") === "soft";
+    if (!txt) {
+      setLineNumbers("1");
+      return;
+    }
+    if (!isSoftWrap) {
+      // 旧逻辑：每行一个数字
+      setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
+      return;
+    }
+    // 镜像测量
+    ensureMirrorReady();
+    syncMirrorMetrics();
+    const lines = txt.split("\n");
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      const rows = computeRowsForLine(lines[i]);
+      out.push(String(i + 1));
+      for (let k = 1; k < rows; k++) out.push(""); // 其余可视行留空，使高度对齐
+    }
+    setLineNumbers(out.join("\n") || "1");
+  }
+
   /* ---------- 初始&同步 ---------- */
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
     setContent(init);
-    lastPersisted.current = { content: init };
     ensureHistory(block?.id, init);
-    updateLineNums(init);
+    updateLineNumsWrapped(init);
     updatePreview(init);
     requestAnimationFrame(() => { syncLineNumbersPadding(); detectOverflow(); });
   }, [block?.id]);
 
   useEffect(() => { updatePreview(content); }, [content]);
+
   useEffect(() => {
     const key =
       previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
@@ -208,11 +276,15 @@ export default function BlockEditorAuto({
   }
   useEffect(() => {
     syncLineNumbersPadding();
-    const onResize = () => { syncLineNumbersPadding(); detectOverflow(); };
+    const onResize = () => {
+      syncLineNumbersPadding();
+      // 尺寸改变需要重新测算换行 -> 行号
+      updateLineNumsWrapped(content);
+      detectOverflow();
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
-  useEffect(() => { syncLineNumbersPadding(); }, [content]);
+  }, [content, isMobile]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -230,7 +302,9 @@ export default function BlockEditorAuto({
       const pv = previewScrollRef.current; if (pv) { pv.classList.toggle("no-v-scroll", pv.scrollHeight <= pv.clientHeight + 1); }
     });
   }
-  useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
+  useEffect(() => {
+    detectOverflow();
+  }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
   /* ---------- 图片上传（粘贴/拖拽） ---------- */
   async function persistAfterImage(newContent) {
@@ -253,7 +327,7 @@ export default function BlockEditorAuto({
     setContent(prev => {
       const nl = prev && !prev.endsWith("\n") ? "\n" : "";
       const nc = prev + nl + placeholder + "\n";
-      pushHistory(nc, true); updateLineNums(nc); updatePreview(nc); detectOverflow();
+      pushHistory(nc, true); updateLineNumsWrapped(nc); updatePreview(nc); detectOverflow();
       return nc;
     });
     try {
@@ -262,14 +336,14 @@ export default function BlockEditorAuto({
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, `![image](${img.url})`);
-        updateLineNums(replaced); updatePreview(replaced); persistAfterImage(replaced); detectOverflow(); return replaced;
+        updateLineNumsWrapped(replaced); updatePreview(replaced); persistAfterImage(replaced); detectOverflow(); return replaced;
       });
       toast.push("图片已上传", { type: "success" });
     } catch (err) {
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, "![失败](#)");
-        updateLineNums(replaced); updatePreview(replaced); persistAfterImage(replaced); detectOverflow(); return replaced;
+        updateLineNumsWrapped(replaced); updatePreview(replaced); persistAfterImage(replaced); detectOverflow(); return replaced;
       });
       toast.push(err.message || "图片上传失败", { type: "error" });
     }
@@ -314,14 +388,14 @@ export default function BlockEditorAuto({
       const newSelStart = start - removeFirst;
       const adjust = target.length - newTarget.length;
       const newSelEnd = end - adjust;
-      setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
+      setContent(newContent); updateLineNumsWrapped(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
       requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(newSelStart, newSelEnd); });
     } else {
       const newLines = lines.length === 1 ? [INDENT + lines[0]] : lines.map(l => INDENT + l);
       const newTarget = newLines.join("\n");
       const newContent = before + newTarget + after;
       const delta = newLines.length * INDENT.length;
-      setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
+      setContent(newContent); updateLineNumsWrapped(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
       requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); });
     }
   }
@@ -394,23 +468,39 @@ export default function BlockEditorAuto({
   }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
 
   /* ---------- 内容变化 ---------- */
-  function handleContentChange(v) { setContent(v); updateLineNums(v); updatePreview(v); pushHistory(v); detectOverflow(); }
+  function handleContentChange(v) {
+    setContent(v);
+    updateLineNumsWrapped(v);
+    updatePreview(v);
+    pushHistory(v);
+    detectOverflow();
+  }
 
-  /* ---------- 顶部工具条 ---------- */
+  /* ---------- 顶部工具条（PC 右对齐按钮） ---------- */
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
       style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}
     >
-      {/* 左侧：移动端为图标化；桌面端显示标题与控制 */}
+      {/* 左侧：移动端为返回；PC 仅显示标题 */}
+      <div className="flex items-center gap-2 min-w-0">
+        {isMobile ? (
+          onBackToList && (
+            <button type="button" onClick={onBackToList} className="btn-outline-modern !p-2" title="返回列表">
+              <ArrowLeft size={16} />
+            </button>
+          )
+        ) : (
+          <div className="text-lg font-semibold truncate select-none" style={{ color: "var(--color-text)" }}>
+            {derivedTitle}
+          </div>
+        )}
+      </div>
+
+      {/* 右侧：PC 把功能按钮全部放右边对齐；移动端放图标组 + 预览切换 */}
       <div className="flex items-center gap-2">
         {isMobile ? (
           <>
-            {onBackToList && (
-              <button type="button" onClick={onBackToList} className="btn-outline-modern !p-2" title="返回列表">
-                <ArrowLeft size={16} />
-              </button>
-            )}
             <button type="button" onClick={() => restoreHistory(-1)} disabled={!canUndo} className="btn-outline-modern !p-2 disabled:opacity-40" title="撤销"><Undo2 size={16} /></button>
             <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo} className="btn-outline-modern !p-2 disabled:opacity-40" title="重做"><Redo2 size={16} /></button>
             {mobileView === "edit" ? (
@@ -421,29 +511,24 @@ export default function BlockEditorAuto({
           </>
         ) : (
           <>
-            <div className="text-lg font-semibold truncate select-none" style={{ color: "var(--color-text)" }}>
-              {derivedTitle}
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <button type="button" onClick={() => restoreHistory(-1)} disabled={!canUndo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="撤销 (Ctrl+Z)"><Undo2 size={16} /></button>
-              <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="重做 (Ctrl+Y)"><Redo2 size={16} /></button>
-              {showPreview && (
-                <>
-                  <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-1.5" title="同步滚动开/关">{syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}</button>
-                  <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "上下预览" : "左右预览"}</button>
-                </>
-              )}
-              <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">{showPreview ? "隐藏预览" : "显示预览"}</button>
-            </div>
+            <button type="button" onClick={() => restoreHistory(-1)} disabled={!canUndo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="撤销 (Ctrl+Z)"><Undo2 size={16} /></button>
+            <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="重做 (Ctrl+Y)"><Redo2 size={16} /></button>
+            {showPreview && (
+              <>
+                <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-1.5" title="同步滚动开/关">{syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}</button>
+                <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "上下预览" : "左右预览"}</button>
+              </>
+            )}
+            <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">{showPreview ? "隐藏预览" : "显示预览"}</button>
           </>
         )}
-      </div>
 
-      {/* 右侧：保存状态（md 以上可见） + 删除 */}
-      <div className="flex items-center gap-2">
+        {/* 保存状态（md 以上可见） */}
         <div className="hidden md:block text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
           {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
         </div>
+
+        {/* 删除 */}
         <button
           onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }}
           className="btn-danger-modern !px-3 !py-1.5"
@@ -465,7 +550,7 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  /* ---------- 移动端：单屏编辑/预览 ---------- */
+  /* ---------- 移动端：单屏编辑/预览（行号用镜像算法） ---------- */
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
@@ -474,7 +559,7 @@ export default function BlockEditorAuto({
           <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
             <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
               <div className="editor-inner">
-                <div className="editor-line-numbers hidden md:block">
+                <div className="editor-line-numbers">
                   <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
                 </div>
                 <div className="editor-text-wrapper">
@@ -485,7 +570,7 @@ export default function BlockEditorAuto({
                     disabled={disabledByCreation}
                     placeholder="输入文本 (可粘贴图片)"
                     wrap="soft"
-                    onChange={e => { setContent(e.target.value); updateLineNums(e.target.value); updatePreview(e.target.value); pushHistory(e.target.value); detectOverflow(); }}
+                    onChange={e => { handleContentChange(e.target.value); }}
                     onBlur={onBlur}
                     onKeyDown={handleKeyDown}
                     style={{ overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--color-surface)", color: "var(--color-text)" }}
