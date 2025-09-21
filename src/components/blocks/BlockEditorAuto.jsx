@@ -10,7 +10,6 @@ const HISTORY_GROUP_MS = 800;
 const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
-// 移动端行号兜底冗余行（仅桌面端使用）
 const MOBILE_LINE_SLACK = 3;
 
 export default function BlockEditorAuto({
@@ -60,7 +59,7 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
 
-  // 按需滚动：内容不溢出则隐藏滚动条，溢出才显示
+  // 按需滚动
   const [editorCanScroll, setEditorCanScroll] = useState(false);
   const [previewCanScroll, setPreviewCanScroll] = useState(false);
 
@@ -71,10 +70,13 @@ export default function BlockEditorAuto({
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
-  // 镜像测量元素（桌面端行号计算）
+  // 镜像测量元素（移动端行号计算）
   const mirrorRef = useRef(null);
 
+  // 关键：记录“已保存的内容”，用于 dirty 判定；以及“是否发生真实编辑”
   const lastPersisted = useRef({ content: "" });
+  const hasUserEditedRef = useRef(false);
+
   const currentBlockIdRef = useRef(block?.id || null);
 
   const dividerDragRef     = useRef(null);
@@ -100,23 +102,18 @@ export default function BlockEditorAuto({
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
-function renderPlainWithImages(raw) {
-  if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
-  // 允许可选的 "title" 部分：![alt](url "title")
-  const re = /!\[([^\]]*?)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-  let out = "", last = 0, m;
-  while ((m = re.exec(raw)) !== null) {
-    // 关键修复：使用 slice( , ) 调用而不是 slice[ , ]
-    out += escapeHtml(raw.slice(last, m.index));
-    const alt = m[1] ?? "";
-    const url = m[2] ?? "";
-    out += `<img class="preview-img" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
-    last = m.index + m[0].length;
+  function renderPlainWithImages(raw) {
+    if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
+    const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
+    let out = "", last = 0, m;
+    while ((m = re.exec(raw)) !== null) {
+      out += escapeHtml(raw.slice(last, m.index));
+      out += `<img class="preview-img" src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}" loading="lazy" />`;
+      last = m.index + m[0].length;
+    }
+    out += escapeHtml(raw.slice(last));
+    return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
   }
-  out += escapeHtml(raw.slice(last));
-  return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
-}
-
   function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
 
   // 历史（撤销/重做）
@@ -157,6 +154,8 @@ function renderPlainWithImages(raw) {
     setContent(snap);
     updateLineNumsWrapped(snap);
     updatePreview(snap);
+    // 撤销/重做属于“编辑”
+    hasUserEditedRef.current = true;
     requestAnimationFrame(() => { isRestoringHistoryRef.current = false; detectOverflow(); });
   }
   function handleUndoRedoKey(e) {
@@ -167,7 +166,7 @@ function renderPlainWithImages(raw) {
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
-  // 镜像测量 —— 行号/换行（仅桌面端使用）
+  // 镜像测量 —— 移动端行号/换行
   function ensureMirrorReady() {
     if (mirrorRef.current || !textareaRef.current) return;
     const div = document.createElement("div");
@@ -201,18 +200,13 @@ function renderPlainWithImages(raw) {
     if (!m) return 1;
     m.textContent = line.length ? line : "·";
     const lh = parseFloat(getComputedStyle(m).lineHeight) || 20;
-    // 向上取整，避免低估
     const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
     return rows;
   }
-
-  // ✅ 行号更新：移动端直接隐藏行号（返回空），桌面端计算换行对齐
   function updateLineNumsWrapped(txt) {
     const ta = textareaRef.current;
     if (!ta) { setLineNumbers("1"); return; }
-    if (isMobile) { setLineNumbers(""); return; } // ← 移动端不显示行号
-
-    const isSoftWrap = ta.getAttribute("wrap") === "soft";
+    const isSoftWrap = isMobile || ta.getAttribute("wrap") === "soft";
     if (!txt) { setLineNumbers("1"); return; }
     if (!isSoftWrap) {
       setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
@@ -231,14 +225,19 @@ function renderPlainWithImages(raw) {
     setLineNumbers(out.join("\n") || "1");
   }
 
-  // 初始与同步
+  // 初始与同步（关键修复：切块时先重置 lastPersisted，再 setContent）
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
+    // 这里先重置“已保存快照”，避免刚切换就被判脏
+    lastPersisted.current = { content: init };
+    hasUserEditedRef.current = false; // 切换后尚未编辑
     setContent(init);
     ensureHistory(block?.id, init);
     updateLineNumsWrapped(init);
     updatePreview(init);
+    setSaving(false);
+    setError("");
     requestAnimationFrame(() => { syncLineNumbersPadding(); detectOverflow(); });
   }, [block?.id]);
 
@@ -253,10 +252,12 @@ function renderPlainWithImages(raw) {
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
-  // 自动保存
+  // 自动保存（仅当发生真实编辑时才会执行）
   async function doSave() {
-    const dirty = !!block && content !== lastPersisted.current.content;
-    if (!block || block.optimistic || !dirty) return;
+    if (!block || block.optimistic) return;
+    if (!hasUserEditedRef.current) return; // 关键：未编辑就不保存
+    if (!dirty) return;
+
     const saveId = block.id;
     setSaving(true); setError("");
     const payload = { content };
@@ -265,15 +266,17 @@ function renderPlainWithImages(raw) {
       let real;
       try { real = await onImmediateSave(block.id, payload); }
       catch (err) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err); else throw err; }
-      if (currentBlockIdRef.current === saveId) lastPersisted.current = { content };
-    } catch (err) { if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败"); }
-    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); } }
+      if (currentBlockIdRef.current === saveId) {
+        lastPersisted.current = { content };
+      }
+    } catch (err) {
+      if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败");
+    } finally {
+      if (currentBlockIdRef.current === saveId) setSaving(false);
+    }
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
-  useEffect(() => {
-    const dirty = !!block && content !== lastPersisted.current.content;
-    if (dirty) debouncedSave();
-  }, [content, debouncedSave, block]);
+  useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
   function onBlur() { flushSave(); }
 
   // 行号/滚动/溢出
@@ -323,7 +326,7 @@ function renderPlainWithImages(raw) {
   useEffect(() => { detectOverflow(); },
     [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
-  // 图片上传
+  // 图片上传（属于编辑，需标记）
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -338,6 +341,7 @@ function renderPlainWithImages(raw) {
   }
   async function uploadOne(file) {
     if (!file || !block) return;
+    hasUserEditedRef.current = true; // 上传图片算编辑
     const currentId = block.id;
     const tempId = "uploading-" + Date.now() + "-" + Math.random().toString(16).slice(2);
     const placeholder = `![${tempId}](uploading)`;
@@ -391,7 +395,7 @@ function renderPlainWithImages(raw) {
     for (const f of files) await uploadOne(f);
   }, [block]);
 
-  // Tab 缩进
+  // Tab 缩进（视为编辑）
   function handleIndentKey(e) {
     if (e.key !== "Tab") return;
     const ta = textareaRef.current; if (!ta) return;
@@ -404,6 +408,7 @@ function renderPlainWithImages(raw) {
     const target = text.slice(lineStartIdx, effectiveEnd);
     const after = text.slice(effectiveEnd);
     const lines = target.split("\n");
+    hasUserEditedRef.current = true; // 视为编辑
     if (e.shiftKey) {
       let removeFirst = 0;
       const newLines = lines.map((l, i) => {
@@ -495,8 +500,9 @@ function renderPlainWithImages(raw) {
     };
   }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
 
-  // 内容变化
+  // 内容变化（用户输入才触发：标记 hasUserEdited）
   function handleContentChange(v) {
+    hasUserEditedRef.current = true;
     setContent(v);
     updateLineNumsWrapped(v);
     updatePreview(v);
@@ -504,7 +510,7 @@ function renderPlainWithImages(raw) {
     detectOverflow();
   }
 
-  // 顶部工具条（PC 右对齐按钮；移动端显示返回/撤销重做/预览/保存状态）
+  // 顶部工具条
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
@@ -573,7 +579,7 @@ function renderPlainWithImages(raw) {
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // 移动端：单屏编辑/预览（🚫 不渲染行号）
+  // 移动端：单屏编辑/预览
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
@@ -586,7 +592,9 @@ function renderPlainWithImages(raw) {
               style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
             >
               <div className="editor-inner">
-                {/* —— 移动端行号已去掉 —— */}
+                <div className="editor-line-numbers">
+                  <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
+                </div>
                 <div className="editor-text-wrapper">
                   <textarea
                     ref={textareaRef}
@@ -648,7 +656,7 @@ function renderPlainWithImages(raw) {
         className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
         style={{ height: "100%" }}
       >
-        {/* 编辑面板（桌面端仍保留行号） */}
+        {/* 编辑面板 */}
         <div
           className="editor-pane rounded-md"
           style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}
