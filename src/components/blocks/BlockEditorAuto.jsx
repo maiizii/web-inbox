@@ -11,6 +11,9 @@ const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
 
+// —— 关键：给移动端留冗余行，避免“滑不到底” —— //
+const MOBILE_LINE_SLACK = 3;
+
 export default function BlockEditorAuto({
   block,
   onChange,
@@ -21,7 +24,7 @@ export default function BlockEditorAuto({
 }) {
   const toast = useToast();
 
-  /* ---------- 响应式判断 ---------- */
+  /* ---------- 响应式 ---------- */
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 768px)").matches
@@ -65,7 +68,7 @@ export default function BlockEditorAuto({
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
-  // 用于“换行后行号对齐”的镜像测量元素
+  // 镜像测量元素
   const mirrorRef = useRef(null);
 
   const lastPersisted = useRef({ content: "" });
@@ -86,7 +89,7 @@ export default function BlockEditorAuto({
   const canUndo = hist ? hist.index > 0 : false;
   const canRedo = hist ? hist.index < hist.stack.length - 1 : false;
 
-  /* ---------- 工具函数 ---------- */
+  /* ---------- 工具 ---------- */
   function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
   function escapeHtml(str) {
     return String(str)
@@ -145,7 +148,7 @@ export default function BlockEditorAuto({
     const snap = h.stack[next];
     isRestoringHistoryRef.current = true;
     setContent(snap);
-    updateLineNumsWrapped(snap);   // 换行行号也更新
+    updateLineNumsWrapped(snap);   // 同步行号
     updatePreview(snap);
     requestAnimationFrame(() => { isRestoringHistoryRef.current = false; detectOverflow(); });
   }
@@ -157,7 +160,7 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
-  /* ---------- 镜像测量：计算“可视行数”并生成行号 ---------- */
+  /* ---------- 镜像测量（移动端换行行号） ---------- */
   function ensureMirrorReady() {
     if (mirrorRef.current || !textareaRef.current) return;
     const div = document.createElement("div");
@@ -175,7 +178,6 @@ export default function BlockEditorAuto({
     const ta = textareaRef.current, m = mirrorRef.current;
     if (!ta || !m) return;
     const cs = getComputedStyle(ta);
-    // 用内容宽度来换行：clientWidth - padding
     const padL = parseFloat(cs.paddingLeft) || 0;
     const padR = parseFloat(cs.paddingRight) || 0;
     m.style.width = Math.max(0, ta.clientWidth - padL - padR) + "px";
@@ -185,35 +187,27 @@ export default function BlockEditorAuto({
     m.style.lineHeight = cs.lineHeight;
     m.style.letterSpacing = cs.letterSpacing;
     m.style.tabSize = cs.tabSize || "2";
-    // 重要：测量时不要 padding，避免高度被额外放大
     m.style.padding = "0px";
   }
   function computeRowsForLine(line) {
     const m = mirrorRef.current;
     if (!m) return 1;
-    m.textContent = line.length ? line : " ";
+    // 使用一个字符代替空字符串，避免高度为 0
+    m.textContent = line.length ? line : "·";
     const lh = parseFloat(getComputedStyle(m).lineHeight) || 20;
-    const rows = Math.max(1, Math.round(m.scrollHeight / lh));
+    // —— 关键：向上取整，避免低估 —— //
+    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
     return rows;
   }
   function updateLineNumsWrapped(txt) {
-    // 移动端（或 soft wrap）采用镜像行号；桌面端 wrap=off 仍使用普通行号
     const ta = textareaRef.current;
-    if (!ta) {
-      setLineNumbers("1");
-      return;
-    }
+    if (!ta) { setLineNumbers("1"); return; }
     const isSoftWrap = isMobile || ta.getAttribute("wrap") === "soft";
-    if (!txt) {
-      setLineNumbers("1");
-      return;
-    }
+    if (!txt) { setLineNumbers("1"); return; }
     if (!isSoftWrap) {
-      // 旧逻辑：每行一个数字
       setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
       return;
     }
-    // 镜像测量
     ensureMirrorReady();
     syncMirrorMetrics();
     const lines = txt.split("\n");
@@ -221,12 +215,14 @@ export default function BlockEditorAuto({
     for (let i = 0; i < lines.length; i++) {
       const rows = computeRowsForLine(lines[i]);
       out.push(String(i + 1));
-      for (let k = 1; k < rows; k++) out.push(""); // 其余可视行留空，使高度对齐
+      for (let k = 1; k < rows; k++) out.push("");
     }
+    // —— 关键：末尾加冗余空行，保证能“滑到底” —— //
+    for (let s = 0; s < MOBILE_LINE_SLACK; s++) out.push("");
     setLineNumbers(out.join("\n") || "1");
   }
 
-  /* ---------- 初始&同步 ---------- */
+  /* ---------- 初始 & 同步 ---------- */
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
@@ -278,8 +274,7 @@ export default function BlockEditorAuto({
     syncLineNumbersPadding();
     const onResize = () => {
       syncLineNumbersPadding();
-      // 尺寸改变需要重新测算换行 -> 行号
-      updateLineNumsWrapped(content);
+      updateLineNumsWrapped(content); // 宽度变更需重算行号
       detectOverflow();
     };
     window.addEventListener("resize", onResize);
@@ -302,11 +297,9 @@ export default function BlockEditorAuto({
       const pv = previewScrollRef.current; if (pv) { pv.classList.toggle("no-v-scroll", pv.scrollHeight <= pv.clientHeight + 1); }
     });
   }
-  useEffect(() => {
-    detectOverflow();
-  }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
+  useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
-  /* ---------- 图片上传（粘贴/拖拽） ---------- */
+  /* ---------- 图片上传 ---------- */
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -327,7 +320,10 @@ export default function BlockEditorAuto({
     setContent(prev => {
       const nl = prev && !prev.endsWith("\n") ? "\n" : "";
       const nc = prev + nl + placeholder + "\n";
-      pushHistory(nc, true); updateLineNumsWrapped(nc); updatePreview(nc); detectOverflow();
+      pushHistory(nc, true);
+      updateLineNumsWrapped(nc);
+      updatePreview(nc);
+      detectOverflow();
       return nc;
     });
     try {
@@ -336,14 +332,22 @@ export default function BlockEditorAuto({
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, `![image](${img.url})`);
-        updateLineNumsWrapped(replaced); updatePreview(replaced); persistAfterImage(replaced); detectOverflow(); return replaced;
+        updateLineNumsWrapped(replaced);
+        updatePreview(replaced);
+        persistAfterImage(replaced);
+        detectOverflow();
+        return replaced;
       });
       toast.push("图片已上传", { type: "success" });
     } catch (err) {
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, "![失败](#)");
-        updateLineNumsWrapped(replaced); updatePreview(replaced); persistAfterImage(replaced); detectOverflow(); return replaced;
+        updateLineNumsWrapped(replaced);
+        updatePreview(replaced);
+        persistAfterImage(replaced);
+        detectOverflow();
+        return replaced;
       });
       toast.push(err.message || "图片上传失败", { type: "error" });
     }
@@ -401,7 +405,7 @@ export default function BlockEditorAuto({
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
 
-  /* ---------- 分割条拖拽 & 同步滚动（桌面端） ---------- */
+  /* ---------- 分割条&同步滚动（桌面） ---------- */
   function startDividerDrag(e) {
     if (!showPreview || isMobile) return;
     e.preventDefault();
@@ -482,7 +486,7 @@ export default function BlockEditorAuto({
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
       style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}
     >
-      {/* 左侧：移动端为返回；PC 仅显示标题 */}
+      {/* 左侧：移动端返回；PC 标题 */}
       <div className="flex items-center gap-2 min-w-0">
         {isMobile ? (
           onBackToList && (
@@ -497,7 +501,7 @@ export default function BlockEditorAuto({
         )}
       </div>
 
-      {/* 右侧：PC 把功能按钮全部放右边对齐；移动端放图标组 + 预览切换 */}
+      {/* 右侧按钮（PC 右对齐 / 移动端图标组） */}
       <div className="flex items-center gap-2">
         {isMobile ? (
           <>
@@ -539,7 +543,7 @@ export default function BlockEditorAuto({
     </div>
   );
 
-  /* ---------- 没有选中 ---------- */
+  /* ---------- 未选中 ---------- */
   if (!block) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-slate-400 dark:text-slate-500">
@@ -550,7 +554,7 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  /* ---------- 移动端：单屏编辑/预览（行号用镜像算法） ---------- */
+  /* ---------- 移动端：单屏编辑/预览（行号：镜像算法 + 冗余行） ---------- */
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
@@ -573,7 +577,15 @@ export default function BlockEditorAuto({
                     onChange={e => { handleContentChange(e.target.value); }}
                     onBlur={onBlur}
                     onKeyDown={handleKeyDown}
-                    style={{ overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--color-surface)", color: "var(--color-text)" }}
+                    style={{
+                      overflow: "auto",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      background: "var(--color-surface)",
+                      color: "var(--color-text)",
+                      // —— 关键：底部留余量，兼容工具条/系统条 —— //
+                      paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)"
+                    }}
                   />
                 </div>
               </div>
@@ -629,7 +641,7 @@ export default function BlockEditorAuto({
               onDoubleClick={resetSplit}
               title="拖动调整比例，双击恢复 50%"
             />
-            <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
+            <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100)%` }}>
               <div ref={previewScrollRef} className="preview-scroll custom-scroll">
                 <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
               </div>
