@@ -17,13 +17,13 @@ export default function Navbar() {
     catch (e) { toast.push(e.message || "后端异常", { type: "error" }); }
   }
 
-  // 深色页头=与编辑器同系色；浅色保留半透明白
+  // 深色页头与编辑器同底色；浅色为半透明白
   const headerStyle = theme === "dark"
     ? { backgroundColor: "var(--color-surface-alt)" }
     : { backgroundColor: "rgba(255,255,255,0.8)" };
 
-  // 统一用 .btn-icon 的主题变量，避免像你截图那样暗色下发灰发脏
-  const iconBtnCls = "btn-icon hover:brightness-105 active:brightness-95";
+  // 图标按钮：中间对齐；悬停样式与“显示/隐藏预览”(btn-outline-modern)一致
+  const iconBtn = "btn-outline-modern inline-flex items-center justify-center !px-2.5 !py-1.5";
 
   return (
     <>
@@ -39,10 +39,10 @@ export default function Navbar() {
           />
 
           <div className="flex items-center gap-2">
-            <button onClick={testHealth} className={iconBtnCls} title="测试后端">
+            <button onClick={testHealth} className={iconBtn} title="测试后端">
               <RefreshCw size={16} />
             </button>
-            <button onClick={toggleTheme} className={iconBtnCls} title="切换主题">
+            <button onClick={toggleTheme} className={iconBtn} title="切换主题">
               {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
@@ -52,12 +52,7 @@ export default function Navbar() {
               {user?.email}
             </span>
 
-            {/* 修改密码在退出前 */}
-            <button
-              onClick={() => setShowPwd(true)}
-              className={iconBtnCls}
-              title="修改密码"
-            >
+            <button onClick={() => setShowPwd(true)} className={iconBtn} title="修改密码">
               <KeyRound size={16} />
             </button>
 
