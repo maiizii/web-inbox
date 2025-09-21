@@ -10,8 +10,7 @@ const HISTORY_GROUP_MS = 800;
 const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
-// 移动端行号兜底冗余行，避免“滑不到底”
-const MOBILE_LINE_SLACK = 3;
+const MOBILE_LINE_SLACK = 3; // 移动端兜底空行，避免“滑不到底”
 
 export default function BlockEditorAuto({
   block,
@@ -23,7 +22,7 @@ export default function BlockEditorAuto({
 }) {
   const toast = useToast();
 
-  // 响应式
+  // === 响应式 ===
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 768px)").matches
@@ -40,7 +39,7 @@ export default function BlockEditorAuto({
   const [mobileView, setMobileView] = useState("edit"); // edit | preview
   useEffect(() => { if (!isMobile) setMobileView("edit"); }, [isMobile]);
 
-  // 编辑状态
+  // === 编辑状态 ===
   const [content, setContent] = useState(block?.content || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -49,8 +48,7 @@ export default function BlockEditorAuto({
     () => localStorage.getItem("previewMode") || "vertical"
   );
   const [splitRatio, setSplitRatio] = useState(() => {
-    const key =
-      previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
+    const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : 0.5;
     return isNaN(v) ? 0.5 : Math.min(MAX_RATIO, Math.max(MIN_RATIO, v));
@@ -60,22 +58,18 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
 
-  // 引用
+  // === 引用 ===
   const splitContainerRef   = useRef(null);
   const editorScrollRef     = useRef(null);
   const previewScrollRef    = useRef(null);
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
-
-  // 镜像测量元素（移动端行号计算）
-  const mirrorRef = useRef(null);
+  const mirrorRef           = useRef(null); // 移动端镜像测量
 
   const lastPersisted = useRef({ content: "" });
   const currentBlockIdRef = useRef(block?.id || null);
-
   const dividerDragRef     = useRef(null);
   const draggingDividerRef = useRef(false);
-
   const historyStoreRef       = useRef(new Map());
   const isRestoringHistoryRef = useRef(false);
   const isSyncingScrollRef    = useRef(false);
@@ -87,15 +81,11 @@ export default function BlockEditorAuto({
   const canUndo = hist ? hist.index > 0 : false;
   const canRedo = hist ? hist.index < hist.stack.length - 1 : false;
 
-  // 工具
-  function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
+  // === 工具函数 ===
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const escapeHtml = (str) =>
+    String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+               .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   function renderPlainWithImages(raw) {
     if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
     const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
@@ -108,9 +98,9 @@ export default function BlockEditorAuto({
     out += escapeHtml(raw.slice(last));
     return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
   }
-  function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
+  const updatePreview = (txt) => setPreviewHtml(renderPlainWithImages(txt));
 
-  // 历史（撤销/重做）
+  // === 历史（撤销/重做） ===
   function ensureHistory(blockId, init) {
     if (!blockId) return;
     if (!historyStoreRef.current.has(blockId)) {
@@ -122,7 +112,8 @@ export default function BlockEditorAuto({
     if (!id) return;
     const h = historyStoreRef.current.get(id);
     if (!h || isRestoringHistoryRef.current) return;
-    const now = Date.now(), since = now - h.lastPush;
+    const now = Date.now();
+    const since = now - h.lastPush;
     const lastSnap = h.stack[h.index];
     if (!forceSeparate && since < HISTORY_GROUP_MS) {
       if (lastSnap !== newContent) h.stack[h.index] = newContent;
@@ -158,18 +149,15 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
-  // 镜像测量 —— 移动端行号/换行
+  // === 移动端行号计算（镜像测量） ===
   function ensureMirrorReady() {
     if (mirrorRef.current || !textareaRef.current) return;
     const div = document.createElement("div");
     mirrorRef.current = div;
-    div.style.position = "absolute";
-    div.style.visibility = "hidden";
-    div.style.pointerEvents = "none";
-    div.style.whiteSpace = "pre-wrap";
-    div.style.wordBreak = "break-word";
-    div.style.left = "-9999px";
-    div.style.top = "-9999px";
+    Object.assign(div.style, {
+      position: "absolute", visibility: "hidden", pointerEvents: "none",
+      whiteSpace: "pre-wrap", wordBreak: "break-word", left: "-9999px", top: "-9999px", padding: "0px"
+    });
     document.body.appendChild(div);
   }
   function syncMirrorMetrics() {
@@ -185,16 +173,13 @@ export default function BlockEditorAuto({
     m.style.lineHeight = cs.lineHeight;
     m.style.letterSpacing = cs.letterSpacing;
     m.style.tabSize = cs.tabSize || "2";
-    m.style.padding = "0px";
   }
   function computeRowsForLine(line) {
     const m = mirrorRef.current;
     if (!m) return 1;
     m.textContent = line.length ? line : "·";
     const lh = parseFloat(getComputedStyle(m).lineHeight) || 20;
-    // 关键：向上取整，避免低估
-    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
-    return rows;
+    return Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
   }
   function updateLineNumsWrapped(txt) {
     const ta = textareaRef.current;
@@ -214,12 +199,11 @@ export default function BlockEditorAuto({
       out.push(String(i + 1));
       for (let k = 1; k < rows; k++) out.push("");
     }
-    // 加冗余空行，兜底“滑不到底”
     for (let s = 0; s < MOBILE_LINE_SLACK; s++) out.push("");
     setLineNumbers(out.join("\n") || "1");
   }
 
-  // 初始与同步
+  // === 初始化/同步 ===
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
@@ -229,19 +213,16 @@ export default function BlockEditorAuto({
     updatePreview(init);
     requestAnimationFrame(() => { syncLineNumbersPadding(); detectOverflow(); });
   }, [block?.id]);
-
   useEffect(() => { updatePreview(content); }, [content]);
-
   useEffect(() => {
-    const key =
-      previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
+    const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : splitRatio;
     setSplitRatio(clamp(isNaN(v) ? 0.5 : v, MIN_RATIO, MAX_RATIO));
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
-  // 自动保存
+  // === 自动保存 ===
   async function doSave() {
     if (!block || block.optimistic || !dirty) return;
     const saveId = block.id;
@@ -254,13 +235,13 @@ export default function BlockEditorAuto({
       catch (err) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err); else throw err; }
       if (currentBlockIdRef.current === saveId) lastPersisted.current = { content };
     } catch (err) { if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败"); }
-    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); } }
+    finally { if (currentBlockIdRef.current === saveId) setSaving(false); }
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
-  function onBlur() { flushSave(); }
+  const onBlur = () => flushSave();
 
-  // 行号/滚动/溢出
+  // === 行号/滚动/溢出 ===
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
@@ -269,11 +250,7 @@ export default function BlockEditorAuto({
   }
   useEffect(() => {
     syncLineNumbersPadding();
-    const onResize = () => {
-      syncLineNumbersPadding();
-      updateLineNumsWrapped(content);
-      detectOverflow();
-    };
+    const onResize = () => { syncLineNumbersPadding(); updateLineNumsWrapped(content); detectOverflow(); };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [content, isMobile]);
@@ -290,13 +267,13 @@ export default function BlockEditorAuto({
   function detectOverflow() {
     if (overflowCheckTimerRef.current) cancelAnimationFrame(overflowCheckTimerRef.current);
     overflowCheckTimerRef.current = requestAnimationFrame(() => {
-      const ta = textareaRef.current; if (ta) { ta.classList.toggle("no-v-scroll", ta.scrollHeight <= ta.clientHeight + 1); }
-      const pv = previewScrollRef.current; if (pv) { pv.classList.toggle("no-v-scroll", pv.scrollHeight <= pv.clientHeight + 1); }
+      const ta = textareaRef.current; if (ta) ta.classList.toggle("no-v-scroll", ta.scrollHeight <= ta.clientHeight + 1);
+      const pv = previewScrollRef.current; if (pv) pv.classList.toggle("no-v-scroll", pv.scrollHeight <= pv.clientHeight + 1);
     });
   }
   useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
-  // 图片上传
+  // === 图片上传 ===
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -364,7 +341,7 @@ export default function BlockEditorAuto({
     for (const f of files) await uploadOne(f);
   }, [block]);
 
-  // Tab 缩进
+  // === Tab 缩进 ===
   function handleIndentKey(e) {
     if (e.key !== "Tab") return;
     const ta = textareaRef.current; if (!ta) return;
@@ -400,9 +377,9 @@ export default function BlockEditorAuto({
       requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); });
     }
   }
-  function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
+  const handleKeyDown = (e) => { handleUndoRedoKey(e); handleIndentKey(e); };
 
-  // 分割条/同步滚动（桌面）
+  // === 分割条/同步滚动（桌面） ===
   function startDividerDrag(e) {
     if (!showPreview || isMobile) return;
     e.preventDefault();
@@ -422,7 +399,9 @@ export default function BlockEditorAuto({
     if (e.touches && e.touches[0]) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; e.preventDefault(); }
     else { clientX = e.clientX; clientY = e.clientY; }
     const { rect } = dividerDragRef.current;
-    let ratio = previewMode === "vertical" ? (clientX - rect.left) / rect.width : (clientY - rect.top) / rect.height;
+    const ratio = previewMode === "vertical"
+      ? (clientX - rect.left) / rect.width
+      : (clientY - rect.top) / rect.height;
     setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
   }
   function stopDividerDrag() {
@@ -437,7 +416,7 @@ export default function BlockEditorAuto({
     localStorage.setItem(key, String(splitRatio));
     detectOverflow();
   }
-  function resetSplit() { setSplitRatio(0.5); const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal"; localStorage.setItem(key, "0.5"); }
+  const resetSplit = () => { setSplitRatio(0.5); localStorage.setItem(previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal", "0.5"); };
   useEffect(() => () => { if (draggingDivider) stopDividerDrag(); }, [draggingDivider]);
 
   useEffect(() => {
@@ -447,28 +426,21 @@ export default function BlockEditorAuto({
     function syncPreviewScroll() {
       if (!syncScrollEnabled || isSyncingScrollRef.current) return;
       isSyncingScrollRef.current = true;
-      pv.scrollTop =
-        (ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight)) *
-        (pv.scrollHeight - pv.clientHeight);
+      pv.scrollTop = (ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight)) * (pv.scrollHeight - pv.clientHeight);
       setTimeout(() => { isSyncingScrollRef.current = false; }, 0);
     }
     function syncEditorScroll() {
       if (!syncScrollEnabled || isSyncingScrollRef.current) return;
       isSyncingScrollRef.current = true;
-      ta.scrollTop =
-        (pv.scrollTop / Math.max(1, pv.scrollHeight - pv.clientHeight)) *
-        (ta.scrollHeight - ta.clientHeight);
+      ta.scrollTop = (pv.scrollTop / Math.max(1, pv.scrollHeight - pv.clientHeight)) * (ta.scrollHeight - ta.clientHeight);
       setTimeout(() => { isSyncingScrollRef.current = false; }, 0);
     }
     ta.addEventListener("scroll", syncPreviewScroll);
     pv.addEventListener("scroll", syncEditorScroll);
-    return () => {
-      ta.removeEventListener("scroll", syncPreviewScroll);
-      pv.removeEventListener("scroll", syncEditorScroll);
-    };
+    return () => { ta.removeEventListener("scroll", syncPreviewScroll); pv.removeEventListener("scroll", syncEditorScroll); };
   }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
 
-  // 内容变化
+  // === 内容变化 ===
   function handleContentChange(v) {
     setContent(v);
     updateLineNumsWrapped(v);
@@ -477,7 +449,7 @@ export default function BlockEditorAuto({
     detectOverflow();
   }
 
-  // 顶部工具条（PC 右对齐按钮 & 移动端也显示保存状态）
+  // === 顶部工具条（PC 右对齐 & 移动端显示保存状态） ===
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
@@ -522,7 +494,6 @@ export default function BlockEditorAuto({
           </>
         )}
 
-        {/* 移动端也显示保存状态 */}
         <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
           {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
         </div>
@@ -547,7 +518,7 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // 移动端：单屏编辑/预览（行号在移动端隐藏）
+  // === 移动端：单屏编辑/预览（行号隐藏） ===
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
@@ -598,25 +569,27 @@ export default function BlockEditorAuto({
     );
   }
 
-  // 桌面端：分屏（固定高度内滚动）
+  // === 桌面端：分屏（重点：不再用 h-full，固定在父容器可用高度内） ===
   return (
     <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
       {TopBar}
       <div
         ref={splitContainerRef}
-        className={`editor-split-root h-full flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
+        className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
       >
         <div
           className="editor-pane rounded-md min-h-0"
           style={
             showPreview
               ? { flexBasis: `${splitRatio * 100}%`, flexGrow: 0, flexShrink: 0 }
-              : { flexBasis: "100%", flexGrow: 0, flexShrink: 0 }
+              : { flexBasis: "100%",               flexGrow: 0, flexShrink: 0 }
           }
         >
           <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
             <div className="editor-inner">
-              <div className="editor-line-numbers"><pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre></div>
+              <div className="editor-line-numbers">
+                <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
+              </div>
               <div className="editor-text-wrapper">
                 <textarea
                   ref={textareaRef}
