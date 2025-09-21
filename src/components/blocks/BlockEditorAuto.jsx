@@ -15,11 +15,11 @@ export default function BlockEditorAuto({
   onChange,
   onDelete,
   onImmediateSave,
-  safeUpdateFallback
+  safeUpdateFallback,
+  onBackToList // 新增：手机端返回列表
 }) {
   const toast = useToast();
 
-  // === 移动端检测 ===
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 768px)").matches
@@ -34,17 +34,14 @@ export default function BlockEditorAuto({
     return () => mq.removeEventListener?.("change", handler);
   }, []);
 
-  // 移动端：编辑/预览 单屏切换
-  const [mobileView, setMobileView] = useState("edit"); // 'edit' | 'preview'
+  const [mobileView, setMobileView] = useState("edit"); // edit | preview
   useEffect(() => { if (!isMobile) setMobileView("edit"); }, [isMobile]);
 
   const [content, setContent] = useState(block?.content || "");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState("");
   const [showPreview, setShowPreview] = useState(true);
-  const [previewMode, setPreviewMode] = useState(
-    () => localStorage.getItem("previewMode") || "vertical"
-  );
+  const [previewMode, setPreviewMode] = useState(() => localStorage.getItem("previewMode") || "vertical");
   const [splitRatio, setSplitRatio] = useState(() => {
     const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
@@ -56,35 +53,35 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
 
-  const splitContainerRef = useRef(null);
-  const editorScrollRef = useRef(null);
-  const previewScrollRef = useRef(null);
-  const textareaRef = useRef(null);
+  const splitContainerRef   = useRef(null);
+  const editorScrollRef     = useRef(null);
+  const previewScrollRef    = useRef(null);
+  const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
   const selectionRef = useRef({ start: null, end: null });
   const userManuallyBlurredRef = useRef(false);
-  const shouldRestoreFocusRef = useRef(false);
+  const shouldRestoreFocusRef  = useRef(false);
   const lastPersisted = useRef({ content: "" });
   const currentBlockIdRef = useRef(block?.id || null);
 
-  const dividerDragRef = useRef(null);
+  const dividerDragRef     = useRef(null);
   const draggingDividerRef = useRef(false);
 
-  const historyStoreRef = useRef(new Map());
+  const historyStoreRef     = useRef(new Map());
   const isRestoringHistoryRef = useRef(false);
-  const isSyncingScrollRef = useRef(false);
+  const isSyncingScrollRef    = useRef(false);
   const overflowCheckTimerRef = useRef(null);
 
   const dirty = !!block && content !== lastPersisted.current.content;
   const derivedTitle = (block?.content || "").split("\n")[0].slice(0, 64) || "(空)";
-  const hist = historyStoreRef.current.get(block?.id) || null;
+  const hist   = historyStoreRef.current.get(block?.id) || null;
   const canUndo = hist ? hist.index > 0 : false;
   const canRedo = hist ? hist.index < hist.stack.length - 1 : false;
 
   function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
   function escapeHtml(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    return str.replace(/&/g, "&amp;").replace(/<//g, "&lt;")
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function renderPlainWithImages(raw) {
@@ -314,20 +311,20 @@ export default function BlockEditorAuto({
       const adjust = target.length - newTarget.length;
       const newSelEnd = end - adjust;
       setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(newSelStart, newSelEnd); captureSel(); });
+      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(newSelStart, newSelEnd); captureSel(); });
     } else {
       const newLines = lines.length === 1 ? [INDENT + lines[0]] : lines.map(l => INDENT + l);
       const newTarget = newLines.join("\n");
       const newContent = before + newTarget + after;
       const delta = newLines.length * INDENT.length;
       setContent(newContent); updateLineNums(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); captureSel(); });
+      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); captureSel(); });
     }
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
 
   function startDividerDrag(e) {
-    if (!showPreview || isMobile) return; // 移动端不支持分隔拖拽
+    if (!showPreview || isMobile) return;
     e.preventDefault();
     const container = splitContainerRef.current; if (!container) return;
     dividerDragRef.current = { rect: container.getBoundingClientRect() };
@@ -390,7 +387,7 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // 顶部条：移动端标题换行；桌面端截断
+  // 顶部条：手机端加“返回列表”，标题可换行
   const TitleEl = (
     <div
       className={`flex-1 text-lg font-semibold select-none ${isMobile ? "whitespace-pre-wrap break-words" : "truncate"}`}
@@ -405,6 +402,11 @@ export default function BlockEditorAuto({
       className="flex items-center gap-3 py-3 px-4 border-b"
       style={{ backgroundColor: "var(--color-surface)", borderColor: "var(--color-border)" }}
     >
+      {isMobile && onBackToList && (
+        <button type="button" onClick={onBackToList} className="btn-outline-modern !px-3 !py-1.5">
+          返回列表
+        </button>
+      )}
       {TitleEl}
       <div className="flex items-center gap-2 text-xs">
         {!isMobile && (
@@ -413,127 +415,4 @@ export default function BlockEditorAuto({
             <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="恢复 (Ctrl+Y)"><Redo2 size={16} /></button>
             {showPreview && (
               <>
-                <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-1.5" title="同步滚动开/关">{syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}</button>
-                <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "上下预览" : "左右预览"}</button>
-              </>
-            )}
-            <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">{showPreview ? "隐藏预览" : "显示预览"}</button>
-          </>
-        )}
-        {isMobile && (
-          <>
-            {mobileView === "edit" ? (
-              <button type="button" onClick={() => setMobileView("preview")} className="btn-outline-modern !px-3 !py-1.5">预览</button>
-            ) : (
-              <button type="button" onClick={() => setMobileView("edit")} className="btn-outline-modern !px-3 !py-1.5">返回编辑</button>
-            )}
-          </>
-        )}
-        <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
-          {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
-        </div>
-        <button onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }} className="btn-danger-modern !px-3 !py-1.5">删除</button>
-      </div>
-    </div>
-  );
-
-  // === 渲染 ===
-  // 移动端：单屏显示（编辑 或 预览）
-  if (isMobile) {
-    return (
-      <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
-        {TopBar}
-        {mobileView === "edit" ? (
-          <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
-            <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
-              <div className="editor-inner">
-                {/* 移动端隐藏行号以避免遮挡 */}
-                <div className="editor-line-numbers hidden sm:block">
-                  <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
-                </div>
-                <div className="editor-text-wrapper">
-                  <textarea
-                    ref={textareaRef}
-                    className="editor-textarea custom-scroll"
-                    value={content}
-                    disabled={disabledByCreation}
-                    placeholder="输入文本 (可粘贴图片)"
-                    wrap="soft"
-                    onChange={e => { handleContentChange(e.target.value); shouldRestoreFocusRef.current = true; userManuallyBlurredRef.current = false; captureSel(); }}
-                    onFocus={onContentFocus}
-                    onBlur={onBlur}
-                    onClick={captureSel}
-                    onKeyUp={captureSel}
-                    onKeyDown={handleKeyDown}
-                    style={{
-                      overflow: "auto",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      background: "var(--color-surface)",
-                      color: "var(--color-text)"
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
-            <div ref={previewScrollRef} className="preview-scroll custom-scroll">
-              <div
-                className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // 桌面：分屏
-  return (
-    <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
-      {TopBar}
-      <div
-        ref={splitContainerRef}
-        className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
-      >
-        <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}>
-          <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
-            <div className="editor-inner">
-              <div className="editor-line-numbers"><pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre></div>
-              <div className="editor-text-wrapper">
-                <textarea
-                  ref={textareaRef}
-                  className="editor-textarea custom-scroll"
-                  value={content}
-                  disabled={disabledByCreation}
-                  placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
-                  wrap="off"
-                  onChange={e => { handleContentChange(e.target.value); shouldRestoreFocusRef.current = true; userManuallyBlurredRef.current = false; captureSel(); }}
-                  onFocus={onContentFocus}
-                  onBlur={onBlur}
-                  onClick={captureSel}
-                  onKeyUp={captureSel}
-                  onKeyDown={handleKeyDown}
-                  style={{ overflow: "auto", background: "var(--color-surface)", color: "var(--color-text)" }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-        {showPreview && (
-          <>
-            <div className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`} onMouseDown={startDividerDrag} onTouchStart={startDividerDrag} onDoubleClick={resetSplit} title="拖动调整比例，双击恢复 50%" />
-            <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
-              <div ref={previewScrollRef} className="preview-scroll custom-scroll">
-                <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+                <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-
