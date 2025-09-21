@@ -85,9 +85,15 @@ export async function apiUploadImage(file) {
 }
 
 //  apiChangePassword 
-// 彻底替换
 export async function apiChangePassword(old_password, new_password) {
-  // 优先你现有鉴权体系下的端点；最后才试 /api/password（Pages Functions）
+  // 明确拿当前账号
+  let email = null;
+  try {
+    const me = await apiMe();
+    email = me?.email || null;
+  } catch {}
+  if (!email) throw Object.assign(new Error("未登录，请重新登录"), { _trace: "[PRE] apiMe 无法获取 email" });
+
   const endpoints = [
     "/api/auth/password",
     "/api/user/password",
@@ -96,9 +102,9 @@ export async function apiChangePassword(old_password, new_password) {
     "/api/user/change-password",
     "/api/auth/change-password",
     "/api/change-password",
-    "/api/password" // 最后兜底；有你之前的 functions 就别优先打这个
+    "/api/password" // Pages Functions 兜底实现
   ];
-  const payload = { old_password, new_password };
+  const payload = { email, old_password, new_password };
 
   const trace = [];
   const readBody = async (res) => {
@@ -107,55 +113,39 @@ export async function apiChangePassword(old_password, new_password) {
     try { text = await res.clone().text(); } catch {}
     return { json, text };
   };
-
   const mapErr = (status, text = "") => {
     const s = (text || "").toLowerCase();
-    // 只有明确写“未登录/请登录/not logged in/login required”才判未登录
-    if ((status === 401 || status === 403) && /(not\s*logged\s*in|login\s*required|请.*登录|未登录)/i.test(s)) {
-      return "未登录，请重新登录";
-    }
-    // 其它 401/403 + 典型语义 → 当前密码错
+    if ((status === 401 || status === 403) && /(not\s*logged\s*in|login\s*required|请.*登录|未登录)/i.test(s)) return "未登录，请重新登录";
     if (
       status === 401 || status === 403 ||
       /(wrong|invalid|incorrect).*(old|current).*(pass)/i.test(s) ||
       /旧密码|原密码|当前密码|user.*not.*found|no.*such.*user|账号不存在/i.test(s)
     ) return "请输入正确的当前密码";
-
     if (status === 404) return "修改密码接口未部署";
     return text || `HTTP ${status}`;
   };
 
   let saw404 = false;
-
   for (const url of endpoints) {
-    // 用裸 fetch 拿到 status+body（仍携带 cookie）
     const res = await fetch(url, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-
     const { json, text } = await readBody(res);
     const bodyMsg = (json && (json.message || json.error)) || text || "";
-
     trace.push(`${url} -> ${res.status}${bodyMsg ? ` | ${bodyMsg.slice(0,120)}` : ""}`);
 
     if (res.status === 404) { saw404 = true; continue; }
-
     if (res.ok) {
-      // 200 但业务失败
       if (json && typeof json === "object" && json.ok === false) {
         throw Object.assign(new Error(mapErr(400, bodyMsg)), { _trace: trace.join("\n") });
       }
-      // 成功：把 trace 带回去方便界面打印
       return Object.assign(json || { ok: true }, { _trace: trace.join("\n"), _endpoint: url });
     }
-
-    // 非 200：直接抛映射后的错误（带 trace）
     throw Object.assign(new Error(mapErr(res.status, bodyMsg)), { _trace: trace.join("\n") });
   }
-
-  // 所有端点都 404
   throw Object.assign(new Error(saw404 ? "修改密码接口未部署" : "修改密码失败"), { _trace: trace.join("\n") });
 }
+
