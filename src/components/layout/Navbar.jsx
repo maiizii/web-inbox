@@ -13,18 +13,17 @@ export default function Navbar() {
   const [showPwd, setShowPwd] = useState(false);
 
   async function testHealth() {
-    try {
-      const r = await apiHealth();
-      toast.push("后端正常: " + (r.ts || ""), { type: "success" });
-    } catch (e) {
-      toast.push(e.message || "后端异常", { type: "error" });
-    }
+    try { const r = await apiHealth(); toast.push("后端正常: " + (r.ts || ""), { type: "success" }); }
+    catch (e) { toast.push(e.message || "后端异常", { type: "error" }); }
   }
 
-  const headerStyle =
-    theme === "dark"
-      ? { backgroundColor: "var(--color-surface-alt)" } // 与编辑框同色
-      : { backgroundColor: "rgba(255,255,255,0.8)" };
+  // 深色页头=与编辑器同系色；浅色保留半透明白
+  const headerStyle = theme === "dark"
+    ? { backgroundColor: "var(--color-surface-alt)" }
+    : { backgroundColor: "rgba(255,255,255,0.8)" };
+
+  // 统一用 .btn-icon 的主题变量，避免像你截图那样暗色下发灰发脏
+  const iconBtnCls = "btn-icon hover:brightness-105 active:brightness-95";
 
   return (
     <>
@@ -40,18 +39,10 @@ export default function Navbar() {
           />
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={testHealth}
-              className="px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-              title="测试后端"
-            >
+            <button onClick={testHealth} className={iconBtnCls} title="测试后端">
               <RefreshCw size={16} />
             </button>
-            <button
-              onClick={toggleTheme}
-              className="px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-              title="切换主题"
-            >
+            <button onClick={toggleTheme} className={iconBtnCls} title="切换主题">
               {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
@@ -61,9 +52,10 @@ export default function Navbar() {
               {user?.email}
             </span>
 
+            {/* 修改密码在退出前 */}
             <button
               onClick={() => setShowPwd(true)}
-              className="px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              className={iconBtnCls}
               title="修改密码"
             >
               <KeyRound size={16} />
