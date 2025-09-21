@@ -47,11 +47,11 @@ export default function Navbar() {
           </div>
 
           <div className="ml-auto flex items-center gap-3">
-            <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[160px]">
+            {/* 手机端隐藏邮箱，留“用户信息”按钮查看 */}
+            <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400 truncate max-w-[160px]">
               {user?.email}
             </span>
 
-            {/* 新增：用户信息 */}
             <button onClick={() => setShowUser(true)} className={iconBtn} title="用户信息">
               <User size={16} />
             </button>
@@ -73,7 +73,7 @@ export default function Navbar() {
 
       <ChangePasswordModal open={showPwd} onClose={() => setShowPwd(false)} />
 
-      {/* 极简用户信息弹窗（不新建文件，直接内置） */}
+      {/* 极简用户信息弹窗 */}
       {showUser && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowUser(false)} />
