@@ -10,7 +10,6 @@ const HISTORY_GROUP_MS = 800;
 const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
-// 移动端行号兜底冗余行，避免“滑不到底”
 const MOBILE_LINE_SLACK = 3;
 
 export default function BlockEditorAuto({
@@ -23,7 +22,6 @@ export default function BlockEditorAuto({
 }) {
   const toast = useToast();
 
-  // 响应式
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 768px)").matches
@@ -37,10 +35,8 @@ export default function BlockEditorAuto({
     mq.addEventListener?.("change", handler);
     return () => mq.removeEventListener?.("change", handler);
   }, []);
-  const [mobileView, setMobileView] = useState("edit"); // edit | preview
-  useEffect(() => { if (!isMobile) setMobileView("edit"); }, [isMobile]);
+  const [mobileView, setMobileView] = useState("edit");
 
-  // 编辑状态
   const [content, setContent] = useState(block?.content || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -49,8 +45,7 @@ export default function BlockEditorAuto({
     () => localStorage.getItem("previewMode") || "vertical"
   );
   const [splitRatio, setSplitRatio] = useState(() => {
-    const key =
-      previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
+    const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : 0.5;
     return isNaN(v) ? 0.5 : Math.min(MAX_RATIO, Math.max(MIN_RATIO, v));
@@ -60,45 +55,37 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
 
-  // 按需滚动：内容不溢出则隐藏滚动条，溢出才显示
   const [editorCanScroll, setEditorCanScroll] = useState(false);
   const [previewCanScroll, setPreviewCanScroll] = useState(false);
 
-  // 引用
   const splitContainerRef   = useRef(null);
   const editorScrollRef     = useRef(null);
   const previewScrollRef    = useRef(null);
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
+  const mirrorRef           = useRef(null);
 
-  // 镜像测量元素（移动端行号计算）
-  const mirrorRef = useRef(null);
+  const lastPersisted       = useRef({ content: "" });
+  const currentBlockIdRef   = useRef(block?.id || null);
 
-  const lastPersisted = useRef({ content: "" });
-  const currentBlockIdRef = useRef(block?.id || null);
-
-  const dividerDragRef     = useRef(null);
-  const draggingDividerRef = useRef(false);
+  const dividerDragRef      = useRef(null);
+  const draggingDividerRef  = useRef(false);
 
   const historyStoreRef       = useRef(new Map());
   const isRestoringHistoryRef = useRef(false);
   const isSyncingScrollRef    = useRef(false);
   const overflowCheckTimerRef = useRef(null);
 
-  const dirty = !!block && content !== lastPersisted.current.content;
-  const derivedTitle = (block?.content || "").split("\n")[0].slice(0, 64) || "(空)";
+  const dirty  = !!block && content !== lastPersisted.current.content;
+  const title  = (block?.content || "").split("\n")[0].slice(0, 64) || "(空)";
   const hist   = historyStoreRef.current.get(block?.id) || null;
   const canUndo = hist ? hist.index > 0 : false;
   const canRedo = hist ? hist.index < hist.stack.length - 1 : false;
 
-  // 工具
   function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
   function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
   function renderPlainWithImages(raw) {
     if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
@@ -110,18 +97,17 @@ export default function BlockEditorAuto({
       last = m.index + m[0].length;
     }
     out += escapeHtml(raw.slice(last));
-    return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
+    return out.replace(/\r\n/g,"\n").replace(/\n/g,"<br/>");
   }
   function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
 
-  // 历史（撤销/重做）
   function ensureHistory(blockId, init) {
     if (!blockId) return;
     if (!historyStoreRef.current.has(blockId)) {
-      historyStoreRef.current.set(blockId, { stack: [init], index: 0, lastPush: Date.now() });
+      historyStoreRef.current.set(blockId, { stack:[init], index:0, lastPush:Date.now() });
     }
   }
-  function pushHistory(newContent, forceSeparate = false) {
+  function pushHistory(newContent, forceSeparate=false) {
     const id = currentBlockIdRef.current;
     if (!id) return;
     const h = historyStoreRef.current.get(id);
@@ -130,13 +116,11 @@ export default function BlockEditorAuto({
     const lastSnap = h.stack[h.index];
     if (!forceSeparate && since < HISTORY_GROUP_MS) {
       if (lastSnap !== newContent) h.stack[h.index] = newContent;
-      h.lastPush = now;
-      return;
+      h.lastPush = now; return;
     }
     if (h.index < h.stack.length - 1) h.stack.splice(h.index + 1);
     h.stack.push(newContent);
-    if (h.stack.length > MAX_HISTORY) h.stack.shift();
-    else h.index++;
+    if (h.stack.length > MAX_HISTORY) h.stack.shift(); else h.index++;
     h.lastPush = now;
   }
   function restoreHistory(delta) {
@@ -162,7 +146,6 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
-  // 镜像测量 —— 移动端行号/换行
   function ensureMirrorReady() {
     if (mirrorRef.current || !textareaRef.current) return;
     const div = document.createElement("div");
@@ -192,40 +175,46 @@ export default function BlockEditorAuto({
     m.style.padding = "0px";
   }
   function computeRowsForLine(line) {
-    const m = mirrorRef.current;
-    if (!m) return 1;
+    const m = mirrorRef.current; if (!m) return 1;
     m.textContent = line.length ? line : "·";
     const lh = parseFloat(getComputedStyle(m).lineHeight) || 20;
-    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh)); // 向上取整
-    return rows;
+    return Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
   }
   function updateLineNumsWrapped(txt) {
     const ta = textareaRef.current;
     if (!ta) { setLineNumbers("1"); return; }
     const isSoftWrap = isMobile || ta.getAttribute("wrap") === "soft";
     if (!txt) { setLineNumbers("1"); return; }
-    if (!isSoftWrap) {
-      setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
-      return;
-    }
-    ensureMirrorReady();
-    syncMirrorMetrics();
+    if (!isSoftWrap) { setLineNumbers(txt.split("\n").map((_,i)=>i+1).join("\n")); return; }
+    ensureMirrorReady(); syncMirrorMetrics();
     const lines = txt.split("\n");
     const out = [];
-    for (let i = 0; i < lines.length; i++) {
+    for (let i=0;i<lines.length;i++) {
       const rows = computeRowsForLine(lines[i]);
-      out.push(String(i + 1));
-      for (let k = 1; k < rows; k++) out.push("");
+      out.push(String(i+1));
+      for (let k=1;k<rows;k++) out.push("");
     }
-    for (let s = 0; s < MOBILE_LINE_SLACK; s++) out.push("");
+    for (let s=0;s<MOBILE_LINE_SLACK;s++) out.push("");
     setLineNumbers(out.join("\n") || "1");
   }
 
-  // 初始与同步
+  // [FIX] 切换 Block 时：先 flush 旧 Block 的保存，再加载新 Block 内容并重置基线
+  const [debouncedSave, flushSave] = useDebouncedCallback(async () => {
+    await doSave();
+  }, 800);
+
+  useEffect(() => {
+    // cleanup：此 effect 的上一次执行会在切换到新 block 之前先运行
+    return () => {
+      try { flushSave(); } catch {}
+    };
+  }, [block?.id, flushSave]);
+
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
     setContent(init);
+    lastPersisted.current = { content: init };   // [FIX] 重置基线，避免仅切换就 dirty
     ensureHistory(block?.id, init);
     updateLineNumsWrapped(init);
     updatePreview(init);
@@ -235,54 +224,52 @@ export default function BlockEditorAuto({
   useEffect(() => { updatePreview(content); }, [content]);
 
   useEffect(() => {
-    const key =
-      previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
+    const key = previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : splitRatio;
     setSplitRatio(clamp(isNaN(v) ? 0.5 : v, MIN_RATIO, MAX_RATIO));
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
-  // 自动保存
+  // [FIX] doSave 增加“过期保存”熄火保护
   async function doSave() {
+    if (currentBlockIdRef.current !== (block?.id || null)) return; // 切走后到达的旧保存直接丢弃
     if (!block || block.optimistic || !dirty) return;
+
     const saveId = block.id;
     setSaving(true); setError("");
     const payload = { content };
+
     try {
       onChange && onChange(block.id, { content });
       let real;
       try { real = await onImmediateSave(block.id, payload); }
       catch (err) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err); else throw err; }
       if (currentBlockIdRef.current === saveId) lastPersisted.current = { content };
-    } catch (err) { if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败"); }
-    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); } }
+    } catch (err) {
+      if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败");
+    } finally {
+      if (currentBlockIdRef.current === saveId) setSaving(false);
+    }
   }
-  const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
-  useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
+
+  useEffect(() => { if (dirty) debouncedSave(); }, [content, dirty, debouncedSave]);
   function onBlur() { flushSave(); }
 
-  // 行号/滚动/溢出
   function syncLineNumbersPadding() {
-    const ta = textareaRef.current;
-    const inner = lineNumbersInnerRef.current;
+    const ta = textareaRef.current; const inner = lineNumbersInnerRef.current;
     if (!ta || !inner) return;
     inner.style.top = (parseFloat(getComputedStyle(ta).paddingTop) || 0) + "px";
   }
   useEffect(() => {
     syncLineNumbersPadding();
-    const onResize = () => {
-      syncLineNumbersPadding();
-      updateLineNumsWrapped(content);
-      detectOverflow();
-    };
+    const onResize = () => { syncLineNumbersPadding(); updateLineNumsWrapped(content); detectOverflow(); };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [content, isMobile]);
 
   useEffect(() => {
-    const ta = textareaRef.current;
-    const inner = lineNumbersInnerRef.current;
+    const ta = textareaRef.current; const inner = lineNumbersInnerRef.current;
     if (!ta || !inner) return;
     function handleScroll() { inner.style.transform = `translateY(${-ta.scrollTop}px)`; }
     ta.addEventListener("scroll", handleScroll); handleScroll();
@@ -306,10 +293,8 @@ export default function BlockEditorAuto({
       }
     });
   }
-  useEffect(() => { detectOverflow(); },
-    [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
+  useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
-  // 图片上传
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -342,10 +327,8 @@ export default function BlockEditorAuto({
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, `![image](${img.url})`);
-        updateLineNumsWrapped(replaced);
-        updatePreview(replaced);
-        persistAfterImage(replaced);
-        detectOverflow();
+        updateLineNumsWrapped(replaced); updatePreview(replaced);
+        persistAfterImage(replaced); detectOverflow();
         return replaced;
       });
       toast.push("图片已上传", { type: "success" });
@@ -353,10 +336,8 @@ export default function BlockEditorAuto({
       setContent(prev => {
         const re = new RegExp(`!\\[${tempId.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\]\\(uploading\\)`, "g");
         const replaced = prev.replace(re, "![失败](#)");
-        updateLineNumsWrapped(replaced);
-        updatePreview(replaced);
-        persistAfterImage(replaced);
-        detectOverflow();
+        updateLineNumsWrapped(replaced); updatePreview(replaced);
+        persistAfterImage(replaced); detectOverflow();
         return replaced;
       });
       toast.push(err.message || "图片上传失败", { type: "error" });
@@ -377,7 +358,6 @@ export default function BlockEditorAuto({
     for (const f of files) await uploadOne(f);
   }, [block]);
 
-  // Tab 缩进
   function handleIndentKey(e) {
     if (e.key !== "Tab") return;
     const ta = textareaRef.current; if (!ta) return;
@@ -392,9 +372,9 @@ export default function BlockEditorAuto({
     const lines = target.split("\n");
     if (e.shiftKey) {
       let removeFirst = 0;
-      const newLines = lines.map((l, i) => {
-        if (l.startsWith(INDENT)) { if (i === 0) removeFirst = INDENT.length; return l.slice(INDENT.length); }
-        if (l.startsWith(" ")) { if (i === 0) removeFirst = 1; return l.slice(1); }
+      const newLines = lines.map((l,i) => {
+        if (l.startsWith(INDENT)) { if (i===0) removeFirst = INDENT.length; return l.slice(INDENT.length); }
+        if (l.startsWith(" ")) { if (i===0) removeFirst = 1; return l.slice(1); }
         return l;
       });
       const newTarget = newLines.join("\n");
@@ -415,7 +395,6 @@ export default function BlockEditorAuto({
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
 
-  // 分割条/同步滚动（桌面）
   function startDividerDrag(e) {
     if (!showPreview || isMobile) return;
     e.preventDefault();
@@ -435,7 +414,9 @@ export default function BlockEditorAuto({
     if (e.touches && e.touches[0]) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; e.preventDefault(); }
     else { clientX = e.clientX; clientY = e.clientY; }
     const { rect } = dividerDragRef.current;
-    let ratio = previewMode === "vertical" ? (clientX - rect.left) / rect.width : (clientY - rect.top) / rect.height;
+    let ratio = previewMode === "vertical"
+      ? (clientX - rect.left) / rect.width
+      : (clientY - rect.top) / rect.height;
     setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
   }
   function stopDividerDrag() {
@@ -460,17 +441,13 @@ export default function BlockEditorAuto({
     function syncPreviewScroll() {
       if (!syncScrollEnabled || isSyncingScrollRef.current) return;
       isSyncingScrollRef.current = true;
-      pv.scrollTop =
-        (ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight)) *
-        (pv.scrollHeight - pv.clientHeight);
+      pv.scrollTop = (ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight)) * (pv.scrollHeight - pv.clientHeight);
       setTimeout(() => { isSyncingScrollRef.current = false; }, 0);
     }
     function syncEditorScroll() {
       if (!syncScrollEnabled || isSyncingScrollRef.current) return;
       isSyncingScrollRef.current = true;
-      ta.scrollTop =
-        (pv.scrollTop / Math.max(1, pv.scrollHeight - pv.clientHeight)) *
-        (ta.scrollHeight - ta.clientHeight);
+      ta.scrollTop = (pv.scrollTop / Math.max(1, pv.scrollHeight - pv.clientHeight)) * (ta.scrollHeight - ta.clientHeight);
       setTimeout(() => { isSyncingScrollRef.current = false; }, 0);
     }
     ta.addEventListener("scroll", syncPreviewScroll);
@@ -481,7 +458,6 @@ export default function BlockEditorAuto({
     };
   }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
 
-  // 内容变化
   function handleContentChange(v) {
     setContent(v);
     updateLineNumsWrapped(v);
@@ -490,7 +466,6 @@ export default function BlockEditorAuto({
     detectOverflow();
   }
 
-  // 顶部工具条（PC 右对齐按钮；移动端显示返回/撤销重做/预览/保存状态）
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
@@ -505,7 +480,7 @@ export default function BlockEditorAuto({
           )
         ) : (
           <div className="text-lg font-semibold truncate select-none" style={{ color: "var(--color-text)" }}>
-            {derivedTitle}
+            {title}
           </div>
         )}
       </div>
@@ -559,20 +534,14 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // 移动端：单屏编辑/预览
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
         {TopBar}
         {mobileView === "edit" ? (
           <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
-            <div
-              className="editor-scroll custom-scroll"
-              ref={editorScrollRef}
-              style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
-            >
+            <div className="editor-scroll custom-scroll" ref={editorScrollRef} style={{ flex:"1 1 0", minHeight:0, overflow:"hidden" }}>
               <div className="editor-inner">
-                {/* 行号：移动端也保留（镜像测量） */}
                 <div className="editor-line-numbers">
                   <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
                 </div>
@@ -588,15 +557,11 @@ export default function BlockEditorAuto({
                     onBlur={onBlur}
                     onKeyDown={handleKeyDown}
                     style={{
-                      flex: "1 1 0",
-                      minHeight: 0,
-                      overflowX: "hidden",
-                      overflowY: editorCanScroll ? "auto" : "hidden",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      background: "var(--color-surface)",
-                      color: "var(--color-text)",
-                      paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)"
+                      flex:"1 1 0", minHeight:0,
+                      overflowX:"hidden", overflowY: editorCanScroll ? "auto" : "hidden",
+                      whiteSpace:"pre-wrap", wordBreak:"break-word",
+                      background:"var(--color-surface)", color:"var(--color-text)",
+                      paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 28px)"
                     }}
                   />
                 </div>
@@ -604,23 +569,13 @@ export default function BlockEditorAuto({
             </div>
           </div>
         ) : (
-          <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
+          <div className="preview-pane rounded-md" style={{ flexBasis:"100%" }}>
             <div
               ref={previewScrollRef}
               className="preview-scroll custom-scroll"
-              style={{
-                flex: "1 1 0",
-                minHeight: 0,
-                maxHeight: "100%",
-                overflowX: "hidden",
-                overflowY: previewCanScroll ? "auto" : "hidden",
-                background: "var(--color-surface)"
-              }}
+              style={{ flex:"1 1 0", minHeight:0, maxHeight:"100%", overflowX:"hidden", overflowY: previewCanScroll ? "auto" : "hidden", background:"var(--color-surface)" }}
             >
-              <div
-                className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
+              <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
         )}
@@ -628,29 +583,18 @@ export default function BlockEditorAuto({
     );
   }
 
-  // 桌面端：分屏（两个面板都固定在容器内滚动）
   return (
     <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
       {TopBar}
       <div
         ref={splitContainerRef}
         className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
-        style={{ height: "100%" }}
+        style={{ height:"100%" }}
       >
-        {/* 编辑面板 */}
-        <div
-          className="editor-pane rounded-md"
-          style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}
-        >
-          <div
-            className="editor-scroll custom-scroll"
-            ref={editorScrollRef}
-            style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
-          >
+        <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis:"100%" }}>
+          <div className="editor-scroll custom-scroll" ref={editorScrollRef} style={{ flex:"1 1 0", minHeight:0, overflow:"hidden" }}>
             <div className="editor-inner">
-              <div className="editor-line-numbers">
-                <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
-              </div>
+              <div className="editor-line-numbers"><pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre></div>
               <div className="editor-text-wrapper">
                 <textarea
                   ref={textareaRef}
@@ -663,12 +607,9 @@ export default function BlockEditorAuto({
                   onBlur={onBlur}
                   onKeyDown={handleKeyDown}
                   style={{
-                    flex: "1 1 0",
-                    minHeight: 0,
-                    overflowX: "hidden",
-                    overflowY: editorCanScroll ? "auto" : "hidden",
-                    background: "var(--color-surface)",
-                    color: "var(--color-text)"
+                    flex:"1 1 0", minHeight:0,
+                    overflowX:"hidden", overflowY: editorCanScroll ? "auto" : "hidden",
+                    background:"var(--color-surface)", color:"var(--color-text)"
                   }}
                 />
               </div>
@@ -676,37 +617,16 @@ export default function BlockEditorAuto({
           </div>
         </div>
 
-        {/* 预览分隔条 + 预览面板 */}
         {showPreview && (
           <>
-            <div
-              className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`}
-              onMouseDown={startDividerDrag}
-              onTouchStart={startDividerDrag}
-              onDoubleClick={resetSplit}
-              title="拖动调整比例，双击恢复 50%"
-            />
-            <div
-              className="preview-pane rounded-md"
-              style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}
-            >
+            <div className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`} onMouseDown={startDividerDrag} onTouchStart={startDividerDrag} onDoubleClick={resetSplit} title="拖动调整比例，双击恢复 50%" />
+            <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
               <div
                 ref={previewScrollRef}
                 className="preview-scroll custom-scroll"
-                style={{
-                  flex: "1 1 0",
-                  minHeight: 0,
-                  maxHeight: "100%",
-                  overflowX: "hidden",
-                  overflowY: previewCanScroll ? "auto" : "hidden",
-                  background: "var(--color-surface)"
-                }}
+                style={{ flex:"1 1 0", minHeight:0, maxHeight:"100%", overflowX:"hidden", overflowY: previewCanScroll ? "auto" : "hidden", background:"var(--color-surface)" }}
               >
-                <div
-                  className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-                  style={{ maxWidth: "100%" }}
-                  dangerouslySetInnerHTML={{ __html: previewHtml }}
-                />
+                <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" style={{ maxWidth:"100%" }} dangerouslySetInnerHTML={{ __html: previewHtml }} />
               </div>
             </div>
           </>
