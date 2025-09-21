@@ -85,15 +85,8 @@ export async function apiUploadImage(file) {
 }
 
 //  apiChangePassword 
-export async function apiChangePassword(old_password, new_password) {
-  // 明确拿当前账号
-  let email = null;
-  try {
-    const me = await apiMe();
-    email = me?.email || null;
-  } catch {}
-  if (!email) throw Object.assign(new Error("未登录，请重新登录"), { _trace: "[PRE] apiMe 无法获取 email" });
-
+// 彻底替换：由调用方传入 email；不再依赖 apiMe()
+export async function apiChangePassword(old_password, new_password, email) {
   const endpoints = [
     "/api/auth/password",
     "/api/user/password",
@@ -102,20 +95,20 @@ export async function apiChangePassword(old_password, new_password) {
     "/api/user/change-password",
     "/api/auth/change-password",
     "/api/change-password",
-    "/api/password" // Pages Functions 兜底实现
+    "/api/password" // Pages Functions 兜底
   ];
-  const payload = { email, old_password, new_password };
 
   const trace = [];
-  const readBody = async (res) => {
-    let json = null, text = "";
-    try { json = await res.clone().json(); } catch {}
-    try { text = await res.clone().text(); } catch {}
-    return { json, text };
-  };
+  if (!email) {
+    trace.push("[PRE] no email from caller");
+    throw Object.assign(new Error("未登录，请重新登录"), { _trace: trace.join("\n") });
+  }
+  trace.push(`[PRE] email=${email}`);
+
   const mapErr = (status, text = "") => {
     const s = (text || "").toLowerCase();
-    if ((status === 401 || status === 403) && /(not\s*logged\s*in|login\s*required|请.*登录|未登录)/i.test(s)) return "未登录，请重新登录";
+    if ((status === 401 || status === 403) && /(not\s*logged\s*in|login\s*required|请.*登录|未登录)/i.test(s))
+      return "未登录，请重新登录";
     if (
       status === 401 || status === 403 ||
       /(wrong|invalid|incorrect).*(old|current).*(pass)/i.test(s) ||
@@ -126,26 +119,34 @@ export async function apiChangePassword(old_password, new_password) {
   };
 
   let saw404 = false;
+
   for (const url of endpoints) {
     const res = await fetch(url, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ email, old_password, new_password })
     });
-    const { json, text } = await readBody(res);
-    const bodyMsg = (json && (json.message || json.error)) || text || "";
+
+    let bodyMsg = "";
+    try {
+      const j = await res.clone().json();
+      bodyMsg = j?.message || j?.error || "";
+      // 业务失败但 200
+      if (res.ok && j && typeof j === "object" && j.ok === false) {
+        throw Object.assign(new Error(mapErr(400, bodyMsg)), {});
+      }
+    } catch {
+      try { bodyMsg = await res.clone().text(); } catch {}
+    }
+
     trace.push(`${url} -> ${res.status}${bodyMsg ? ` | ${bodyMsg.slice(0,120)}` : ""}`);
 
     if (res.status === 404) { saw404 = true; continue; }
-    if (res.ok) {
-      if (json && typeof json === "object" && json.ok === false) {
-        throw Object.assign(new Error(mapErr(400, bodyMsg)), { _trace: trace.join("\n") });
-      }
-      return Object.assign(json || { ok: true }, { _trace: trace.join("\n"), _endpoint: url });
-    }
+    if (res.ok) return { ok: true, _endpoint: url, _trace: trace.join("\n") };
+
     throw Object.assign(new Error(mapErr(res.status, bodyMsg)), { _trace: trace.join("\n") });
   }
+
   throw Object.assign(new Error(saw404 ? "修改密码接口未部署" : "修改密码失败"), { _trace: trace.join("\n") });
 }
-
