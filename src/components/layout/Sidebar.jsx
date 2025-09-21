@@ -12,7 +12,7 @@ function escapeHtml(s = "") {
 }
 function highlightHtml(text, kw) {
   if (!kw) return escapeHtml(text);
-  const pat = new RegExp(`(${kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+  const pat = new RegExp(`(${kw.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")})`, "gi");
   return escapeHtml(text).replace(pat, "<mark class='kw-hl'>$1</mark>");
 }
 
@@ -26,7 +26,10 @@ export default function Sidebar({
   draggingId,
   onDragStart,
   onDragOver,
-  onDrop
+  onDrop,
+  // 新增：移动端上下移动
+  onMoveUp,
+  onMoveDown,
 }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -126,7 +129,6 @@ export default function Sidebar({
                     className={`font-medium truncate text-sm ${
                       isSel ? "text-white" : "text-slate-300 dark:text-slate-300"
                     }`}
-                    // 标题高亮
                     dangerouslySetInnerHTML={{ __html: highlightHtml(derivedTitle, query.trim()) }}
                   />
                   <div className={`${isSel ? "text-white/85" : "text-slate-400 dark:text-slate-200"} text-[10px] mt-1`}>
@@ -134,6 +136,35 @@ export default function Sidebar({
                   </div>
                 </div>
 
-                {/* 可选：移动端上下调整按钮（不占一行） */}
+                {/* 移动端：右侧上下调整按钮（不占一行） */}
                 {isMobile && (
-                  <d
+                  <div className="flex flex-col gap-1 ml-1 shrink-0 pt-[2px]">
+                    <button
+                      className="btn-outline-modern !p-1"
+                      title="上移"
+                      onClick={e => { e.stopPropagation(); onMoveUp && onMoveUp(b.id); }}
+                    >
+                      <ArrowUp size={14} />
+                    </button>
+                    <button
+                      className="btn-outline-modern !p-1"
+                      title="下移"
+                      onClick={e => { e.stopPropagation(); onMoveDown && onMoveDown(b.id); }}
+                    >
+                      <ArrowDown size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {!blocks.length && (
+          <div className="text-xs text-slate-400 dark:text-slate-200 px-3 py-6 text-center">
+            暂无内容
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
