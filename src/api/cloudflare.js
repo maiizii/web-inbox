@@ -83,3 +83,21 @@ export async function apiUploadImage(file) {
   if (raw?.url) return { url: raw.url };
   throw new Error("图片上传响应无效");
 }
+
+// …保留你现有的导入与基础封装
+
+export async function apiChangePassword(old_password, new_password) {
+  const res = await fetch("/api/user/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ old_password, new_password })
+  });
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (!res.ok) {
+    const msg = data?.message || data?.error || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data || { ok: true };
+}
