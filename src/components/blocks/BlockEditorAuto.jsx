@@ -415,4 +415,114 @@ export default function BlockEditorAuto({
             <button type="button" onClick={() => restoreHistory(+1)} disabled={!canRedo} className="btn-outline-modern !px-2.5 !py-1.5 disabled:opacity-40" title="恢复 (Ctrl+Y)"><Redo2 size={16} /></button>
             {showPreview && (
               <>
-                <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-
+                <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-1.5" title="同步滚动开/关">{syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}</button>
+                <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "上下预览" : "左右预览"}</button>
+              </>
+            )}
+            <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">{showPreview ? "隐藏预览" : "显示预览"}</button>
+          </>
+        )}
+        {isMobile && (
+          <>
+            {mobileView === "edit" ? (
+              <button type="button" onClick={() => setMobileView("preview")} className="btn-outline-modern !px-3 !py-1.5">预览</button>
+            ) : (
+              <button type="button" onClick={() => setMobileView("edit")} className="btn-outline-modern !px-3 !py-1.5">返回编辑</button>
+            )}
+          </>
+        )}
+        <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
+          {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
+        </div>
+        <button onClick={() => { if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id); }} className="btn-danger-modern !px-3 !py-1.5">删除</button>
+      </div>
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
+        {TopBar}
+        {mobileView === "edit" ? (
+          <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
+            <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
+              <div className="editor-inner">
+                <div className="editor-line-numbers hidden sm:block">
+                  <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
+                </div>
+                <div className="editor-text-wrapper">
+                  <textarea
+                    ref={textareaRef}
+                    className="editor-textarea custom-scroll"
+                    value={content}
+                    disabled={disabledByCreation}
+                    placeholder="输入文本 (可粘贴图片)"
+                    wrap="soft"
+                    onChange={e => { handleContentChange(e.target.value); shouldRestoreFocusRef.current = true; userManuallyBlurredRef.current = false; captureSel(); }}
+                    onFocus={onContentFocus}
+                    onBlur={onBlur}
+                    onClick={captureSel}
+                    onKeyUp={captureSel}
+                    onKeyDown={handleKeyDown}
+                    style={{ overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--color-surface)", color: "var(--color-text)" }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
+            <div ref={previewScrollRef} className="preview-scroll custom-scroll">
+              <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
+      {TopBar}
+      <div
+        ref={splitContainerRef}
+        className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
+      >
+        <div className="editor-pane rounded-md" style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}>
+          <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
+            <div className="editor-inner">
+              <div className="editor-line-numbers"><pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre></div>
+              <div className="editor-text-wrapper">
+                <textarea
+                  ref={textareaRef}
+                  className="editor-textarea custom-scroll"
+                  value={content}
+                  disabled={disabledByCreation}
+                  placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
+                  wrap="off"
+                  onChange={e => { handleContentChange(e.target.value); shouldRestoreFocusRef.current = true; userManuallyBlurredRef.current = false; captureSel(); }}
+                  onFocus={onContentFocus}
+                  onBlur={onBlur}
+                  onClick={captureSel}
+                  onKeyUp={captureSel}
+                  onKeyDown={handleKeyDown}
+                  style={{ overflow: "auto", background: "var(--color-surface)", color: "var(--color-text)" }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        {showPreview && (
+          <>
+            <div className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`} onMouseDown={startDividerDrag} onTouchStart={startDividerDrag} onDoubleClick={resetSplit} title="拖动调整比例，双击恢复 50%" />
+            <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
+              <div ref={previewScrollRef} className="preview-scroll custom-scroll">
+                <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
