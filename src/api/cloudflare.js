@@ -84,11 +84,10 @@ export async function apiUploadImage(file) {
   throw new Error("图片上传响应无效");
 }
 
-//  apiChangePassword —— 多端点探测 + 统一文案
-// 覆盖原函数：用 apiFetch 保持与其余接口一致的鉴权/凭据行为
+//  apiChangePassword 
 export async function apiChangePassword(old_password, new_password) {
   const endpoints = [
-    "/api/password",                // 推荐后端落点
+    "/api/password",
     "/api/user/password",
     "/api/user/change-password",
     "/api/account/password",
@@ -101,13 +100,20 @@ export async function apiChangePassword(old_password, new_password) {
 
   const mapErr = (status, text = "") => {
     const s = (text || "").toLowerCase();
-    // 一律视为“当前密码不正确”（很多后端错把旧密错误返回 401/403）
-    if (status === 401 || status === 403) return "请输入正确的当前密码";
-    if (
-      /(wrong|invalid|incorrect).*(old|current).*(pass)/.test(s) ||
-      /旧密码|原密码|当前密码/.test(s) ||
-      /user.*not.*found|no.*such.*user|账号不存在/.test(s)
-    ) return "请输入正确的当前密码";
+
+    // 只有明确包含“未登录/请登录/not logged in/login required”才判未登录
+    if ((status === 401 || status === 403) &&
+        /(not\s*logged\s*in|login\s*required|请.*登录|未登录)/i.test(s)) {
+      return "未登录，请重新登录";
+    }
+
+    // 其它 401/403、以及语义上的“旧/当前密码错误、用户不存在”→ 都当作当前密码错
+    if (status === 401 || status === 403 ||
+        /(wrong|invalid|incorrect).*(old|current).*(pass)/i.test(s) ||
+        /旧密码|原密码|当前密码|user.*not.*found|no.*such.*user|账号不存在/i.test(s)) {
+      return "请输入正确的当前密码";
+    }
+
     if (status === 404) return "修改密码接口未部署";
     return text || `HTTP ${status}`;
   };
@@ -121,7 +127,6 @@ export async function apiChangePassword(old_password, new_password) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      // 兼容 200 但 {ok:false}
       if (data && typeof data === "object" && data.ok === false) {
         const msg = data.message || data.error || "";
         throw new Error(mapErr(400, msg));
@@ -130,7 +135,6 @@ export async function apiChangePassword(old_password, new_password) {
     } catch (e) {
       const msg = String(e?.message || "");
       if (/404/i.test(msg) || /not\s*found/i.test(msg)) { saw404 = true; continue; }
-      // 从报错信息中拆出 HTTP 状态码（apiFetch 可能把它放进 message）
       const m = msg.match(/HTTP\s*(\d{3})/i);
       const status = m ? parseInt(m[1], 10) : 400;
       throw new Error(mapErr(status, msg));
