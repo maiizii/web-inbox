@@ -10,7 +10,7 @@ const HISTORY_GROUP_MS = 800;
 const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
-// 移动端行号兜底冗余行，避免“滑不到底”
+// 移动端行号兜底冗余行（仅桌面端使用）
 const MOBILE_LINE_SLACK = 3;
 
 export default function BlockEditorAuto({
@@ -71,7 +71,7 @@ export default function BlockEditorAuto({
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
-  // 镜像测量元素（移动端行号计算）
+  // 镜像测量元素（桌面端行号计算）
   const mirrorRef = useRef(null);
 
   const lastPersisted = useRef({ content: "" });
@@ -105,7 +105,7 @@ export default function BlockEditorAuto({
     const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
     let out = "", last = 0, m;
     while ((m = re.exec(raw)) !== null) {
-      out += escapeHtml(raw.slice(last, m.index));
+      out += escapeHtml(raw.slice[last, m.index]);
       out += `<img class="preview-img" src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}" loading="lazy" />`;
       last = m.index + m[0].length;
     }
@@ -162,7 +162,7 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
-  // 镜像测量 —— 移动端行号/换行
+  // 镜像测量 —— 行号/换行（仅桌面端使用）
   function ensureMirrorReady() {
     if (mirrorRef.current || !textareaRef.current) return;
     const div = document.createElement("div");
@@ -196,13 +196,18 @@ export default function BlockEditorAuto({
     if (!m) return 1;
     m.textContent = line.length ? line : "·";
     const lh = parseFloat(getComputedStyle(m).lineHeight) || 20;
-    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh)); // 向上取整
+    // 向上取整，避免低估
+    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
     return rows;
   }
+
+  // ✅ 行号更新：移动端直接隐藏行号（返回空），桌面端计算换行对齐
   function updateLineNumsWrapped(txt) {
     const ta = textareaRef.current;
     if (!ta) { setLineNumbers("1"); return; }
-    const isSoftWrap = isMobile || ta.getAttribute("wrap") === "soft";
+    if (isMobile) { setLineNumbers(""); return; } // ← 移动端不显示行号
+
+    const isSoftWrap = ta.getAttribute("wrap") === "soft";
     if (!txt) { setLineNumbers("1"); return; }
     if (!isSoftWrap) {
       setLineNumbers(txt.split("\n").map((_, i) => i + 1).join("\n"));
@@ -245,6 +250,7 @@ export default function BlockEditorAuto({
 
   // 自动保存
   async function doSave() {
+    const dirty = !!block && content !== lastPersisted.current.content;
     if (!block || block.optimistic || !dirty) return;
     const saveId = block.id;
     setSaving(true); setError("");
@@ -259,7 +265,10 @@ export default function BlockEditorAuto({
     finally { if (currentBlockIdRef.current === saveId) { setSaving(false); } }
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
-  useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
+  useEffect(() => {
+    const dirty = !!block && content !== lastPersisted.current.content;
+    if (dirty) debouncedSave();
+  }, [content, debouncedSave, block]);
   function onBlur() { flushSave(); }
 
   // 行号/滚动/溢出
@@ -559,7 +568,7 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // 移动端：单屏编辑/预览
+  // 移动端：单屏编辑/预览（🚫 不渲染行号）
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
@@ -572,10 +581,7 @@ export default function BlockEditorAuto({
               style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
             >
               <div className="editor-inner">
-                {/* 行号：移动端也保留（镜像测量） */}
-                <div className="editor-line-numbers">
-                  <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
-                </div>
+                {/* —— 移动端行号已去掉 —— */}
                 <div className="editor-text-wrapper">
                   <textarea
                     ref={textareaRef}
@@ -637,7 +643,7 @@ export default function BlockEditorAuto({
         className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
         style={{ height: "100%" }}
       >
-        {/* 编辑面板 */}
+        {/* 编辑面板（桌面端仍保留行号） */}
         <div
           className="editor-pane rounded-md"
           style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}
