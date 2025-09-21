@@ -33,7 +33,7 @@ export default function Navbar() {
       >
         <div className="w-full px-4 md:px-6 h-14 flex items-center gap-4">
           <img
-            src="https://img.686656.xyz/images/i/2025/09/20/68ceb0f8dcda7.png"
+            src="https://img.686656.xyz/images/i/2025/09/21/68cf6f92399a4.png"
             alt="Web Tips"
             className="h-full w-auto select-none object-contain"
           />
