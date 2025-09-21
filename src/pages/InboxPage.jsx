@@ -40,6 +40,24 @@ export default function InboxPage() {
   const [manualOrder, setManualOrder] = useState(null);
   const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
 
+  // === 设备检测：手机端两屏分离 ===
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(max-width: 768px)").matches
+      : false
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 768px)");
+    const handler = () => setIsMobile(mq.matches);
+    handler();
+    mq.addEventListener?.("change", handler);
+    return () => mq.removeEventListener?.("change", handler);
+  }, []);
+  // list | editor
+  const [mobileStage, setMobileStage] = useState("list");
+  useEffect(() => { if (!isMobile) setMobileStage("list"); }, [isMobile]);
+
   async function loadBlocks() {
     try {
       setLoading(true);
@@ -109,6 +127,7 @@ export default function InboxPage() {
     };
     setBlocks(prev => [optimistic, ...prev]);
     setSelectedId(optimistic.id);
+    if (isMobile) setMobileStage("editor");
     try {
       const real = await apiCreateBlock("");
       setBlocks(prev =>
@@ -141,6 +160,7 @@ export default function InboxPage() {
       if (selectedId === id) {
         const remain = snapshot.filter(b => b.id !== id);
         setSelectedId(remain.length ? remain[0].id : null);
+        if (isMobile) setMobileStage("list");
       }
       if (lastEditedBlockId === id) setLastEditedBlockId(null);
       if (manualOrder) setManualOrder(manualOrder.filter(i => i !== id));
@@ -191,7 +211,6 @@ export default function InboxPage() {
       if (j < 0 || j >= list.length) return prev;
       const [item] = list.splice(i, 1);
       list.splice(j, 0, item);
-      // 立即持久化
       apiReorderBlocks(list.map((b, idx) => ({ id: b.id, position: idx + 1 })))
         .then(() => toast.push("顺序已保存", { type: "success" }))
         .catch(err => toast.push(err.message || "保存顺序失败", { type: "error" }));
@@ -199,13 +218,52 @@ export default function InboxPage() {
     });
   }
 
+  // 选择行为：手机端切到编辑屏
+  function handleSelect(id) {
+    setSelectedId(id);
+    if (isMobile) setMobileStage("editor");
+  }
+
+  // 渲染：手机端“单屏”切换；桌面端双列
+  if (isMobile) {
+    return (
+      <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
+        {mobileStage === "list" ? (
+          <Sidebar
+            blocks={sortedBlocks}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+            onCreate={createEmptyBlock}
+            query={q}
+            onQueryChange={setQ}
+            draggingId={draggingId}
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            onQuickMove={onQuickMove}
+          />
+        ) : (
+          <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
+            <BlockEditorAuto
+              block={selected}
+              onChange={optimisticChange}
+              onDelete={deleteBlock}
+              onImmediateSave={persistUpdate}
+              onBackToList={() => setMobileStage("list")}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 桌面
   return (
     <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
-      {/* 小屏：左栏可全屏显示，编辑在右侧组件内部处理；这里保持布局不变 */}
       <Sidebar
         blocks={sortedBlocks}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={handleSelect}
         onCreate={createEmptyBlock}
         query={q}
         onQueryChange={setQ}
@@ -213,7 +271,7 @@ export default function InboxPage() {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        onQuickMove={onQuickMove} // 移动端排序
+        onQuickMove={onQuickMove}
       />
       <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
         <BlockEditorAuto
