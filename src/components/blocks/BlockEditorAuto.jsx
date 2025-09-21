@@ -10,11 +10,10 @@ const HISTORY_GROUP_MS = 800;
 const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
-
-// —— 移动端“滑不到底”的兜底：给文本域留更大的底部余量
-const MOBILE_BOTTOM_PAD_PX = 120;
-// —— 移动端行号冗余空行，进一步兜底
+// 移动端行号兜底冗余行，避免“滑不到底”
 const MOBILE_LINE_SLACK = 3;
+// 统一给编辑/预览留出底部空间，避免被安全区或圆角“吃掉”
+const MOBILE_BOTTOM_PAD_PX = 120;
 
 export default function BlockEditorAuto({
   block,
@@ -104,7 +103,7 @@ export default function BlockEditorAuto({
     const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
     let out = "", last = 0, m;
     while ((m = re.exec(raw)) !== null) {
-      out += escapeHtml(raw.slice(last, m.index));
+      out += escapeHtml(raw.slice[last, m.index]);
       out += `<img class="preview-img" src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}" loading="lazy" />`;
       last = m.index + m[0].length;
     }
@@ -155,7 +154,7 @@ export default function BlockEditorAuto({
   }
   function handleUndoRedoKey(e) {
     const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
-    const mod = isMac ? e.metaKey : e.ctrlKey;
+    const mod = isMobile ? e.metaKey || e.ctrlKey : (isMac ? e.metaKey : e.ctrlKey);
     if (!mod) return;
     if (e.key === "z" || e.key === "Z") { e.preventDefault(); restoreHistory(e.shiftKey ? 1 : -1); }
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
@@ -404,7 +403,7 @@ export default function BlockEditorAuto({
       const newContent = before + newTarget + after;
       const delta = newLines.length * INDENT.length;
       setContent(newContent); updateLineNumsWrapped(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); });
+      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT长度 : delta)); });
     }
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
@@ -529,17 +528,8 @@ export default function BlockEditorAuto({
           </>
         )}
 
-        {/* 保存状态：移动端 & PC 均显示，靠右对齐 */}
         <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
-          {saving ? (
-            "保存中"
-          ) : error ? (
-            <button onClick={doSave} className="text-red-500 hover:underline">重试</button>
-          ) : dirty ? (
-            "待保存"
-          ) : (
-            "已保存"
-          )}
+          {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
         </div>
 
         <button
@@ -562,14 +552,14 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // —— 移动端：单屏编辑/预览
+  // —— 移动端：单屏编辑/预览（容器使用 flex-1 min-h-0，充满剩余空间）
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
         {TopBar}
         {mobileView === "edit" ? (
-          <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
-            <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
+          <div className="editor-pane rounded-md flex-1 min-h-0">
+            <div className="editor-scroll custom-scroll h-full" ref={editorScrollRef}>
               <div className="editor-inner">
                 <div className="editor-line-numbers">
                   <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
@@ -591,7 +581,6 @@ export default function BlockEditorAuto({
                       wordBreak: "break-word",
                       background: "var(--color-surface)",
                       color: "var(--color-text)",
-                      // 兜底：即使行数估算偏小，也留足底部空间
                       paddingBottom: `calc(env(safe-area-inset-bottom,0px) + ${MOBILE_BOTTOM_PAD_PX}px)`
                     }}
                   />
@@ -600,8 +589,14 @@ export default function BlockEditorAuto({
             </div>
           </div>
         ) : (
-          <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
-            <div ref={previewScrollRef} className="preview-scroll custom-scroll">
+          <div className="preview-pane rounded-md flex-1 min-h-0">
+            <div
+              ref={previewScrollRef}
+              className="preview-scroll custom-scroll h-full"
+              style={{
+                paddingBottom: `calc(env(safe-area-inset-bottom,0px) + ${MOBILE_BOTTOM_PAD_PX}px)`
+              }}
+            >
               <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
@@ -650,7 +645,11 @@ export default function BlockEditorAuto({
               title="拖动调整比例，双击恢复 50%"
             />
             <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
-              <div ref={previewScrollRef} className="preview-scroll custom-scroll">
+              <div
+                ref={previewScrollRef}
+                className="preview-scroll custom-scroll"
+                style={{ paddingBottom: `calc(env(safe-area-inset-bottom,0px) + ${MOBILE_BOTTOM_PAD_PX}px)` }}
+              >
                 <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
               </div>
             </div>
