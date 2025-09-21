@@ -11,7 +11,7 @@ const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
 // 移动端行号兜底冗余行，避免“滑不到底”
-const MOBILE_LINE_SLACK = 8;
+const MOBILE_LINE_SLACK = 3;
 
 export default function BlockEditorAuto({
   block,
@@ -19,8 +19,7 @@ export default function BlockEditorAuto({
   onDelete,
   onImmediateSave,
   safeUpdateFallback,
-  onBackToList,
-  searchQuery = ""
+  onBackToList
 }) {
   const toast = useToast();
 
@@ -68,9 +67,6 @@ export default function BlockEditorAuto({
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
-  // 编辑器高亮覆盖层
-  const highlightRef = useRef(null);
-
   // 镜像测量元素（移动端行号计算）
   const mirrorRef = useRef(null);
 
@@ -91,37 +87,30 @@ export default function BlockEditorAuto({
   const canUndo = hist ? hist.index > 0 : false;
   const canRedo = hist ? hist.index < hist.stack.length - 1 : false;
 
-  // —— 工具
-  const esc = (s="") => String(s)
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-
-  function highlightHtml(text, kw) {
-    if (!kw) return esc(text);
-    const pat = new RegExp(`(${kw.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\$&")})`, "gi");
-    return esc(text).replace(pat, "<mark class='kw-hl'>$1</mark>");
+  // 工具
+  function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
-
-  function renderPlainWithImages(raw, kw) {
+  function renderPlainWithImages(raw) {
     if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
     const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
     let out = "", last = 0, m;
     while ((m = re.exec(raw)) !== null) {
-      out += esc(raw.slice(last, m.index));
-      out += `<img class="preview-img" src="${esc(m[2])}" alt="${esc(m[1])}" loading="lazy" />`;
+      out += escapeHtml(raw.slice(last, m.index));
+      out += `<img class="preview-img" src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}" loading="lazy" />`;
       last = m.index + m[0].length;
     }
-    out += esc(raw.slice(last));
-    out = out.replace(/\r\n/g,"\n").replace(/\n/g,"<br/>");
-    if (kw) {
-      const pat = new RegExp(`(${kw.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\$&")})`,"gi");
-      out = out.replace(pat, "<mark class='kw-hl'>$1</mark>");
-    }
-    return out;
+    out += escapeHtml(raw.slice(last));
+    return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
   }
-  function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt, searchQuery.trim())); }
+  function updatePreview(txt) { setPreviewHtml(renderPlainWithImages(txt)); }
 
-  // —— 历史（撤销/重做）
+  // 历史（撤销/重做）
   function ensureHistory(blockId, init) {
     if (!blockId) return;
     if (!historyStoreRef.current.has(blockId)) {
@@ -159,7 +148,6 @@ export default function BlockEditorAuto({
     setContent(snap);
     updateLineNumsWrapped(snap);
     updatePreview(snap);
-    syncHighlightLayer(snap);
     requestAnimationFrame(() => { isRestoringHistoryRef.current = false; detectOverflow(); });
   }
   function handleUndoRedoKey(e) {
@@ -170,7 +158,7 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
-  // —— 镜像测量（移动端行号/换行）
+  // 镜像测量 —— 移动端行号/换行
   function ensureMirrorReady() {
     if (mirrorRef.current || !textareaRef.current) return;
     const div = document.createElement("div");
@@ -231,24 +219,7 @@ export default function BlockEditorAuto({
     setLineNumbers(out.join("\n") || "1");
   }
 
-  // —— 编辑器高亮层（仅视觉，不改内容）
-  function syncHighlightLayer(txt) {
-    const kw = searchQuery.trim();
-    const host = highlightRef.current;
-    const ta = textareaRef.current;
-    if (!host || !ta) return;
-    const cs = getComputedStyle(ta);
-    host.style.font = cs.font;
-    host.style.fontFamily = cs.fontFamily;
-    host.style.fontSize = cs.fontSize;
-    host.style.lineHeight = cs.lineHeight;
-    host.style.letterSpacing = cs.letterSpacing;
-    // 内容 -> HTML
-    const html = highlightHtml(txt, kw).replace(/\r\n/g,"\n").replace(/\n/g,"<br/>");
-    host.innerHTML = html || "&nbsp;";
-  }
-
-  // —— 初始与同步
+  // 初始与同步
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
@@ -256,22 +227,21 @@ export default function BlockEditorAuto({
     ensureHistory(block?.id, init);
     updateLineNumsWrapped(init);
     updatePreview(init);
-    syncHighlightLayer(init);
     requestAnimationFrame(() => { syncLineNumbersPadding(); detectOverflow(); });
   }, [block?.id]);
 
-  useEffect(() => { updatePreview(content); syncHighlightLayer(content); }, [content, searchQuery]);
+  useEffect(() => { updatePreview(content); }, [content]);
 
   useEffect(() => {
     const key =
       previewMode === "vertical" ? "editorSplit_vertical" : "editorSplit_horizontal";
     const raw = localStorage.getItem(key);
     const v = raw ? parseFloat(raw) : splitRatio;
-    setSplitRatio(isNaN(v) ? 0.5 : Math.min(MAX_RATIO, Math.max(MIN_RATIO, v)));
+    setSplitRatio(clamp(isNaN(v) ? 0.5 : v, MIN_RATIO, MAX_RATIO));
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
-  // —— 自动保存
+  // 自动保存
   async function doSave() {
     if (!block || block.optimistic || !dirty) return;
     const saveId = block.id;
@@ -290,7 +260,7 @@ export default function BlockEditorAuto({
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
   function onBlur() { flushSave(); }
 
-  // —— 行号/滚动/溢出
+  // 行号/滚动/溢出
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
@@ -302,7 +272,6 @@ export default function BlockEditorAuto({
     const onResize = () => {
       syncLineNumbersPadding();
       updateLineNumsWrapped(content);
-      syncHighlightLayer(content);
       detectOverflow();
     };
     window.addEventListener("resize", onResize);
@@ -312,13 +281,8 @@ export default function BlockEditorAuto({
   useEffect(() => {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
-    const hl = highlightRef.current;
-    if (!ta || !inner || !hl) return;
-    function handleScroll() {
-      const y = -ta.scrollTop;
-      inner.style.transform = `translateY(${y}px)`;
-      hl.style.transform = `translateY(${y}px)`;
-    }
+    if (!ta || !inner) return;
+    function handleScroll() { inner.style.transform = `translateY(${-ta.scrollTop}px)`; }
     ta.addEventListener("scroll", handleScroll); handleScroll();
     return () => ta.removeEventListener("scroll", handleScroll);
   }, [block?.id, content]);
@@ -332,7 +296,7 @@ export default function BlockEditorAuto({
   }
   useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
-  // —— 图片上传
+  // 图片上传
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -356,7 +320,6 @@ export default function BlockEditorAuto({
       pushHistory(nc, true);
       updateLineNumsWrapped(nc);
       updatePreview(nc);
-      syncHighlightLayer(nc);
       detectOverflow();
       return nc;
     });
@@ -368,7 +331,6 @@ export default function BlockEditorAuto({
         const replaced = prev.replace(re, `![image](${img.url})`);
         updateLineNumsWrapped(replaced);
         updatePreview(replaced);
-        syncHighlightLayer(replaced);
         persistAfterImage(replaced);
         detectOverflow();
         return replaced;
@@ -380,7 +342,6 @@ export default function BlockEditorAuto({
         const replaced = prev.replace(re, "![失败](#)");
         updateLineNumsWrapped(replaced);
         updatePreview(replaced);
-        syncHighlightLayer(replaced);
         persistAfterImage(replaced);
         detectOverflow();
         return replaced;
@@ -403,7 +364,7 @@ export default function BlockEditorAuto({
     for (const f of files) await uploadOne(f);
   }, [block]);
 
-  // —— Tab 缩进
+  // Tab 缩进
   function handleIndentKey(e) {
     if (e.key !== "Tab") return;
     const ta = textareaRef.current; if (!ta) return;
@@ -428,30 +389,20 @@ export default function BlockEditorAuto({
       const newSelStart = start - removeFirst;
       const adjust = target.length - newTarget.length;
       const newSelEnd = end - adjust;
-      setContent(newContent);
-      updateLineNumsWrapped(newContent);
-      updatePreview(newContent);
-      syncHighlightLayer(newContent);
-      pushHistory(newContent);
-      detectOverflow();
+      setContent(newContent); updateLineNumsWrapped(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
       requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(newSelStart, newSelEnd); });
     } else {
       const newLines = lines.length === 1 ? [INDENT + lines[0]] : lines.map(l => INDENT + l);
       const newTarget = newLines.join("\n");
       const newContent = before + newTarget + after;
       const delta = newLines.length * INDENT.length;
-      setContent(newContent);
-      updateLineNumsWrapped(newContent);
-      updatePreview(newContent);
-      syncHighlightLayer(newContent);
-      pushHistory(newContent);
-      detectOverflow();
+      setContent(newContent); updateLineNumsWrapped(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
       requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); });
     }
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
 
-  // —— 分割条/同步滚动（桌面）
+  // 分割条/同步滚动（桌面）
   function startDividerDrag(e) {
     if (!showPreview || isMobile) return;
     e.preventDefault();
@@ -472,7 +423,7 @@ export default function BlockEditorAuto({
     else { clientX = e.clientX; clientY = e.clientY; }
     const { rect } = dividerDragRef.current;
     let ratio = previewMode === "vertical" ? (clientX - rect.left) / rect.width : (clientY - rect.top) / rect.height;
-    setSplitRatio(Math.min(MAX_RATIO, Math.max(MIN_RATIO, ratio)));
+    setSplitRatio(clamp(ratio, MIN_RATIO, MAX_RATIO));
   }
   function stopDividerDrag() {
     if (!draggingDividerRef.current) return;
@@ -517,17 +468,16 @@ export default function BlockEditorAuto({
     };
   }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
 
-  // —— 内容变化
+  // 内容变化
   function handleContentChange(v) {
     setContent(v);
     updateLineNumsWrapped(v);
     updatePreview(v);
-    syncHighlightLayer(v);
     pushHistory(v);
     detectOverflow();
   }
 
-  // —— 顶部工具条（PC 右对齐，移动端也显示状态）
+  // 顶部工具条（PC 右对齐按钮）
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
@@ -572,8 +522,7 @@ export default function BlockEditorAuto({
           </>
         )}
 
-        {/* 状态：移动端也显示，位置与 PC 一致 */}
-        <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
+        <div className="hidden md:block text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
           {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
         </div>
 
@@ -597,19 +546,10 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // —— 移动端：单屏编辑/预览
+  // 移动端：单屏编辑/预览
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
-        <style>{`
-          .kw-hl { background: rgba(99,102,241,.35); color: inherit; border-radius: 3px; }
-          .editor-highlights {
-            position:absolute; inset:0; overflow:hidden; pointer-events:none;
-            white-space: pre-wrap; word-break: break-word;
-            color: transparent; /* 只显示 mark 的底色，不挡住文本光标 */
-          }
-          .editor-highlights mark.kw-hl { color: transparent; }
-        `}</style>
         {TopBar}
         {mobileView === "edit" ? (
           <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
@@ -618,16 +558,7 @@ export default function BlockEditorAuto({
                 <div className="editor-line-numbers">
                   <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
                 </div>
-                <div className="editor-text-wrapper" style={{ position: "relative" }}>
-                  {/* 高亮层（在 textarea 下方，同宽同换行） */}
-                  <div
-                    ref={highlightRef}
-                    className="editor-highlights"
-                    style={{
-                      padding: "8px 16px",
-                      fontFamily: "var(--mono)",
-                    }}
-                  />
+                <div className="editor-text-wrapper">
                   <textarea
                     ref={textareaRef}
                     className="editor-textarea custom-scroll"
@@ -644,8 +575,7 @@ export default function BlockEditorAuto({
                       wordBreak: "break-word",
                       background: "var(--color-surface)",
                       color: "var(--color-text)",
-                      // 增大底部余量，保证能滚到底
-                      paddingBottom: "120px"
+                      paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)"
                     }}
                   />
                 </div>
@@ -663,18 +593,9 @@ export default function BlockEditorAuto({
     );
   }
 
-  // —— 桌面端：分屏
+  // 桌面端：分屏
   return (
     <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
-      <style>{`
-        .kw-hl { background: rgba(99,102,241,.28); color: inherit; border-radius: 3px; }
-        .editor-highlights {
-          position:absolute; inset:0; overflow:hidden; pointer-events:none;
-          white-space: pre-wrap; word-break: break-word;
-          color: transparent;
-        }
-        .editor-highlights mark.kw-hl { color: transparent; }
-      `}</style>
       {TopBar}
       <div
         ref={splitContainerRef}
@@ -684,13 +605,7 @@ export default function BlockEditorAuto({
           <div className="editor-scroll custom-scroll" ref={editorScrollRef}>
             <div className="editor-inner">
               <div className="editor-line-numbers"><pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre></div>
-              <div className="editor-text-wrapper" style={{ position: "relative" }}>
-                {/* 高亮层（只在视觉层做 mark） */}
-                <div
-                  ref={highlightRef}
-                  className="editor-highlights"
-                  style={{ padding: "8px 16px", fontFamily: "var(--mono)" }}
-                />
+              <div className="editor-text-wrapper">
                 <textarea
                   ref={textareaRef}
                   className="editor-textarea custom-scroll"
@@ -717,6 +632,7 @@ export default function BlockEditorAuto({
               onDoubleClick={resetSplit}
               title="拖动调整比例，双击恢复 50%"
             />
+            {/* 这里修复了语法错误：去掉多余的 ) */}
             <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
               <div ref={previewScrollRef} className="preview-scroll custom-scroll">
                 <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
