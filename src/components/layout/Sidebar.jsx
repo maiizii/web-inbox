@@ -14,7 +14,7 @@ export default function Sidebar({
   onDragStart,
   onDragOver,
   onDrop,
-  onQuickMove // 新增：移动端快速上/下移 (id, dir: -1|+1)
+  onQuickMove
 }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -41,7 +41,7 @@ export default function Sidebar({
             新建
           </button>
           <div className="text-[12.5px] md:text-[13px] font-medium text-slate-500 dark:text-slate-200 ml-auto">
-            可拖拽排序
+            可调整排序
           </div>
         </div>
       </div>
@@ -88,29 +88,32 @@ export default function Sidebar({
               onMouseLeave={e => { if (!isSel) e.currentTarget.style.backgroundColor = CARD_BG; }}
               onClick={() => onSelect && onSelect(b.id)}
             >
-              <div className="px-3 pt-2 pb-1">
-                <div className="font-medium truncate text-sm">{derivedTitle}</div>
-                <div className={`${isSel ? "text-white/85" : "text-slate-400 dark:text-slate-200"} text-[10px] mt-1`}>
-                  最后编辑：{lastEdit}
+              <div className="px-3 pt-2 pb-1 flex items-center gap-2">
+                <div className={`font-medium truncate text-sm flex-1 ${isSel ? "text-white" : "text-slate-800 dark:text-slate-300"}`}>
+                  {derivedTitle}
+                </div>
+
+                {/* 移动端：右侧内联上/下移动按钮 */}
+                <div className="flex sm:hidden items-center gap-1">
+                  <button
+                    className="btn-outline-modern !px-2 !py-1"
+                    onClick={e => { e.stopPropagation(); onQuickMove && onQuickMove(b.id, -1); }}
+                    title="上移"
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    className="btn-outline-modern !px-2 !py-1"
+                    onClick={e => { e.stopPropagation(); onQuickMove && onQuickMove(b.id, +1); }}
+                    title="下移"
+                  >
+                    <ArrowDown size={14} />
+                  </button>
                 </div>
               </div>
 
-              {/* 移动端：上/下移动按钮（替代 HTML5 drag&drop） */}
-              <div className="flex sm:hidden items-center gap-1 px-2 pb-2">
-                <button
-                  className="btn-outline-modern !px-2 !py-1"
-                  onClick={e => { e.stopPropagation(); onQuickMove && onQuickMove(b.id, -1); }}
-                  title="上移"
-                >
-                  <ArrowUp size={14} />
-                </button>
-                <button
-                  className="btn-outline-modern !px-2 !py-1"
-                  onClick={e => { e.stopPropagation(); onQuickMove && onQuickMove(b.id, +1); }}
-                  title="下移"
-                >
-                  <ArrowDown size={14} />
-                </button>
+              <div className={`px-3 pb-2 text-[10px] ${isSel ? "text-white/85" : "text-slate-400 dark:text-slate-200"}`}>
+                最后编辑：{lastEdit}
               </div>
             </div>
           );
