@@ -256,6 +256,7 @@ export default function InboxPage() {
               onChange={optimisticChange}
               onDelete={deleteBlock}
               onImmediateSave={persistUpdate}
+              searchQuery={q}
               onBackToList={() => setMobileStage("list")}
             />
           </div>
@@ -282,6 +283,7 @@ export default function InboxPage() {
               onChange={optimisticChange}
               onDelete={deleteBlock}
               onImmediateSave={persistUpdate}
+              searchQuery={q}
             />
           </div>
         </>
