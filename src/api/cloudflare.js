@@ -87,7 +87,7 @@ export async function apiUploadImage(file) {
 // 覆盖原有的 apiChangePassword —— 多端点探测 + 统一文案
 export async function apiChangePassword(old_password, new_password) {
   const endpoints = [
-    "/api/password",               // 推荐后端落点（Pages Functions 示例已给过）
+    "/api/password",
     "/api/user/password",
     "/api/user/change-password",
     "/api/account/password",
@@ -98,39 +98,75 @@ export async function apiChangePassword(old_password, new_password) {
   ];
   const payload = { old_password, new_password };
 
-  const mapErr = (status, text = "") => {
-    const s = (text || "").toLowerCase();
-    if (status === 401 || status === 403) return "请输入正确的当前密码";
-    if (
-      s.includes("wrong password") || s.includes("invalid password") ||
-      s.includes("incorrect password") || s.includes("旧密码") ||
-      s.includes("原密码") || s.includes("密码错误") || s.includes("current password")
-    ) return "请输入正确的当前密码";
-    if (s.includes("user not found") || s.includes("no such user")) return "请输入正确的当前密码";
+  const pickMsg = (x) =>
+    typeof x === "string" ? x : (x?.message || x?.error || x?.msg || "");
+
+  const mapErr = (status, bodyOrText = "") => {
+    const t = pickMsg(bodyOrText);
+    const low = (t || "").toLowerCase();
+
+    // 未登录 → 明确提示；不要混淆为密码错误
+    if (status === 401 || status === 403) {
+      if (/(unauth|not ?login|not logged in|未登录|未登入|token|session)/.test(low)) {
+        return "未登录，请重新登录";
+      }
+      return "请输入正确的当前密码";
+    }
+
+    // 常见“旧/当前密码错误”语义
+    if (status === 400 || status === 422) {
+      if (
+        /(wrong|invalid|incorrect).*(old|current).*(pass|password)/
+          .test(low) ||
+        /旧密码|原密码|当前密码/.test(low)
+      ) {
+        return "请输入正确的当前密码";
+      }
+    }
+
+    // 账户不存在也统一按“请输入正确的当前密码”
+    if (/user.*not.*found|no.*such.*user|账号不存在/.test(low)) {
+      return "请输入正确的当前密码";
+    }
+
     if (status === 404) return "修改密码接口未部署";
-    return `HTTP ${status}${text ? " - " + text : ""}`;
+    return t || `HTTP ${status}`;
   };
 
   let last404 = null;
-  for (const url of endpoints) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(payload)
-    });
 
-    let bodyMsg = "";
+  for (const url of endpoints) {
+    let res;
     try {
-      const j = await res.clone().json();
-      bodyMsg = j?.message || j?.error || "";
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload)
+      });
     } catch {
-      try { bodyMsg = await res.clone().text(); } catch { bodyMsg = ""; }
+      // 网络异常：跳过尝试下一个
+      continue;
     }
 
+    let asJson = null;
+    let asText = "";
+    try { asJson = await res.clone().json(); } catch {}
+    try { asText = await res.clone().text(); } catch {}
+
     if (res.status === 404) { last404 = new Error("修改密码接口未部署"); continue; }
-    if (!res.ok) throw new Error(mapErr(res.status, bodyMsg));
-    return (bodyMsg && typeof bodyMsg === "object") ? bodyMsg : { ok: true, endpoint: url };
+
+    if (res.ok) {
+      // 有些后端 200 但返回 { ok:false, message:"…" }
+      if (asJson && typeof asJson === "object" && asJson.ok === false) {
+        throw new Error(mapErr(400, asJson));
+      }
+      return asJson || { ok: true, endpoint: url };
+    }
+
+    throw new Error(mapErr(res.status, asJson || asText));
   }
+
   throw last404 || new Error("修改密码接口未部署");
 }
+
