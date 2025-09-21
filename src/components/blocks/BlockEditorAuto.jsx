@@ -10,7 +10,10 @@ const HISTORY_GROUP_MS = 800;
 const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
-// 移动端行号兜底冗余行，避免“滑不到底”
+
+// —— 移动端“滑不到底”的兜底：给文本域留更大的底部余量
+const MOBILE_BOTTOM_PAD_PX = 120;
+// —— 移动端行号冗余空行，进一步兜底
 const MOBILE_LINE_SLACK = 3;
 
 export default function BlockEditorAuto({
@@ -67,7 +70,7 @@ export default function BlockEditorAuto({
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
-  // 镜像测量元素（移动端行号计算）
+  // 镜像测量元素（移动端行号/软换行计算）
   const mirrorRef = useRef(null);
 
   const lastPersisted = useRef({ content: "" });
@@ -158,7 +161,7 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
-  // 镜像测量 —— 移动端行号/换行
+  // —— 镜像测量（精确计算软换行行数）
   function ensureMirrorReady() {
     if (mirrorRef.current || !textareaRef.current) return;
     const div = document.createElement("div");
@@ -178,7 +181,8 @@ export default function BlockEditorAuto({
     const cs = getComputedStyle(ta);
     const padL = parseFloat(cs.paddingLeft) || 0;
     const padR = parseFloat(cs.paddingRight) || 0;
-    m.style.width = Math.max(0, ta.clientWidth - padL - padR) + "px";
+    const width = Math.max(0, ta.clientWidth - padL - padR);
+    m.style.width = width + "px";
     m.style.font = cs.font;
     m.style.fontFamily = cs.fontFamily;
     m.style.fontSize = cs.fontSize;
@@ -192,9 +196,8 @@ export default function BlockEditorAuto({
     if (!m) return 1;
     m.textContent = line.length ? line : "·";
     const lh = parseFloat(getComputedStyle(m).lineHeight) || 20;
-    // 关键：向上取整，避免低估
-    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
-    return rows;
+    // 向上取整，避免低估导致滚不到底
+    return Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
   }
   function updateLineNumsWrapped(txt) {
     const ta = textareaRef.current;
@@ -214,7 +217,7 @@ export default function BlockEditorAuto({
       out.push(String(i + 1));
       for (let k = 1; k < rows; k++) out.push("");
     }
-    // 加冗余空行，兜底“滑不到底”
+    // 冗余空行兜底
     for (let s = 0; s < MOBILE_LINE_SLACK; s++) out.push("");
     setLineNumbers(out.join("\n") || "1");
   }
@@ -275,7 +278,11 @@ export default function BlockEditorAuto({
       detectOverflow();
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
   }, [content, isMobile]);
 
   useEffect(() => {
@@ -477,7 +484,7 @@ export default function BlockEditorAuto({
     detectOverflow();
   }
 
-  // 顶部工具条（PC 右对齐按钮）
+  // 顶部工具条（PC 右对齐；移动端也显示保存状态）
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
@@ -522,8 +529,17 @@ export default function BlockEditorAuto({
           </>
         )}
 
-        <div className="hidden md:block text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
-          {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
+        {/* 保存状态：移动端 & PC 均显示，靠右对齐 */}
+        <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
+          {saving ? (
+            "保存中"
+          ) : error ? (
+            <button onClick={doSave} className="text-red-500 hover:underline">重试</button>
+          ) : dirty ? (
+            "待保存"
+          ) : (
+            "已保存"
+          )}
         </div>
 
         <button
@@ -546,7 +562,7 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // 移动端：单屏编辑/预览
+  // —— 移动端：单屏编辑/预览
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
@@ -575,7 +591,8 @@ export default function BlockEditorAuto({
                       wordBreak: "break-word",
                       background: "var(--color-surface)",
                       color: "var(--color-text)",
-                      paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)"
+                      // 兜底：即使行数估算偏小，也留足底部空间
+                      paddingBottom: `calc(env(safe-area-inset-bottom,0px) + ${MOBILE_BOTTOM_PAD_PX}px)`
                     }}
                   />
                 </div>
@@ -593,7 +610,7 @@ export default function BlockEditorAuto({
     );
   }
 
-  // 桌面端：分屏
+  // —— 桌面端：分屏
   return (
     <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
       {TopBar}
@@ -632,7 +649,6 @@ export default function BlockEditorAuto({
               onDoubleClick={resetSplit}
               title="拖动调整比例，双击恢复 50%"
             />
-            {/* 这里修复了语法错误：去掉多余的 ) */}
             <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
               <div ref={previewScrollRef} className="preview-scroll custom-scroll">
                 <div className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text" dangerouslySetInnerHTML={{ __html: previewHtml }} />
