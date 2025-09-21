@@ -14,8 +14,8 @@ export default function Sidebar({
   onDragStart,
   onDragOver,
   onDrop,
-  onMoveUp,     // 新增：移动端上移
-  onMoveDown    // 新增：移动端下移
+  onMoveUp,     // 移动端上移
+  onMoveDown    // 移动端下移
 }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -98,7 +98,8 @@ export default function Sidebar({
             >
               <div className="px-3 pt-2 pb-1 flex items-start gap-2">
                 <div className="flex-1 min-w-0">
-                  <div className={`font-medium truncate text-sm ${isSel ? "text-white" : "text-slate-900 dark:text-slate-200"}`}>
+                  {/* 未选中：深色主题标题=浅白色 */}
+                  <div className={`font-medium truncate text-sm ${isSel ? "text-white" : "text-slate-900 dark:text-slate-100"}`}>
                     {derivedTitle}
                   </div>
                   <div className={`${isSel ? "text-white/85" : "text-slate-400 dark:text-slate-300"} text-[10px] mt-1`}>
