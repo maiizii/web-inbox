@@ -47,7 +47,7 @@ export default function AuthPage() {
         <div className="text-center space-y-2">
           <h1 className="mx-auto h-24 justify-center">
             <img
-              src="https://img.686656.xyz/images/i/2025/09/21/68cf6f92399a4.png"
+              src="https://img.686656.xyz/images/i/2025/09/21/webtipslogo.png"
               alt="Web Tips"
               className="h-full object-contain w-auto mx-auto"
             />
