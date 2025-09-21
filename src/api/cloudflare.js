@@ -84,10 +84,11 @@ export async function apiUploadImage(file) {
   throw new Error("图片上传响应无效");
 }
 
-// 覆盖原有的 apiChangePassword —— 多端点探测 + 统一文案
+//  apiChangePassword —— 多端点探测 + 统一文案
+// 覆盖原函数：用 apiFetch 保持与其余接口一致的鉴权/凭据行为
 export async function apiChangePassword(old_password, new_password) {
   const endpoints = [
-    "/api/password",
+    "/api/password",                // 推荐后端落点
     "/api/user/password",
     "/api/user/change-password",
     "/api/account/password",
@@ -98,75 +99,43 @@ export async function apiChangePassword(old_password, new_password) {
   ];
   const payload = { old_password, new_password };
 
-  const pickMsg = (x) =>
-    typeof x === "string" ? x : (x?.message || x?.error || x?.msg || "");
-
-  const mapErr = (status, bodyOrText = "") => {
-    const t = pickMsg(bodyOrText);
-    const low = (t || "").toLowerCase();
-
-    // 未登录 → 明确提示；不要混淆为密码错误
-    if (status === 401 || status === 403) {
-      if (/(unauth|not ?login|not logged in|未登录|未登入|token|session)/.test(low)) {
-        return "未登录，请重新登录";
-      }
-      return "请输入正确的当前密码";
-    }
-
-    // 常见“旧/当前密码错误”语义
-    if (status === 400 || status === 422) {
-      if (
-        /(wrong|invalid|incorrect).*(old|current).*(pass|password)/
-          .test(low) ||
-        /旧密码|原密码|当前密码/.test(low)
-      ) {
-        return "请输入正确的当前密码";
-      }
-    }
-
-    // 账户不存在也统一按“请输入正确的当前密码”
-    if (/user.*not.*found|no.*such.*user|账号不存在/.test(low)) {
-      return "请输入正确的当前密码";
-    }
-
+  const mapErr = (status, text = "") => {
+    const s = (text || "").toLowerCase();
+    // 一律视为“当前密码不正确”（很多后端错把旧密错误返回 401/403）
+    if (status === 401 || status === 403) return "请输入正确的当前密码";
+    if (
+      /(wrong|invalid|incorrect).*(old|current).*(pass)/.test(s) ||
+      /旧密码|原密码|当前密码/.test(s) ||
+      /user.*not.*found|no.*such.*user|账号不存在/.test(s)
+    ) return "请输入正确的当前密码";
     if (status === 404) return "修改密码接口未部署";
-    return t || `HTTP ${status}`;
+    return text || `HTTP ${status}`;
   };
 
-  let last404 = null;
+  let saw404 = false;
 
   for (const url of endpoints) {
-    let res;
     try {
-      res = await fetch(url, {
+      const data = await apiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify(payload)
       });
-    } catch {
-      // 网络异常：跳过尝试下一个
-      continue;
-    }
-
-    let asJson = null;
-    let asText = "";
-    try { asJson = await res.clone().json(); } catch {}
-    try { asText = await res.clone().text(); } catch {}
-
-    if (res.status === 404) { last404 = new Error("修改密码接口未部署"); continue; }
-
-    if (res.ok) {
-      // 有些后端 200 但返回 { ok:false, message:"…" }
-      if (asJson && typeof asJson === "object" && asJson.ok === false) {
-        throw new Error(mapErr(400, asJson));
+      // 兼容 200 但 {ok:false}
+      if (data && typeof data === "object" && data.ok === false) {
+        const msg = data.message || data.error || "";
+        throw new Error(mapErr(400, msg));
       }
-      return asJson || { ok: true, endpoint: url };
+      return data || { ok: true, endpoint: url };
+    } catch (e) {
+      const msg = String(e?.message || "");
+      if (/404/i.test(msg) || /not\s*found/i.test(msg)) { saw404 = true; continue; }
+      // 从报错信息中拆出 HTTP 状态码（apiFetch 可能把它放进 message）
+      const m = msg.match(/HTTP\s*(\d{3})/i);
+      const status = m ? parseInt(m[1], 10) : 400;
+      throw new Error(mapErr(status, msg));
     }
-
-    throw new Error(mapErr(res.status, asJson || asText));
   }
 
-  throw last404 || new Error("修改密码接口未部署");
+  throw new Error(saw404 ? "修改密码接口未部署" : "修改密码失败");
 }
-
