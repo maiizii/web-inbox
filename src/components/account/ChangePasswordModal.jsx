@@ -2,14 +2,32 @@ import React, { useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import { useToast } from "../../hooks/useToast.jsx";
 
-/**
- * 自动探测多个常见端点，避免 Not Found：
- * 优先顺序从最“语义化”到最简短；命中非 404 即停止。
- */
+/* 统一错误文案映射 */
+function mapErrorMessage(status, text = "") {
+  const msg = (text || "").toLowerCase();
+  if (status === 401 || status === 403) return "请输入正确的当前密码";
+  if (
+    msg.includes("wrong password") ||
+    msg.includes("invalid password") ||
+    msg.includes("incorrect password") ||
+    msg.includes("旧密码") ||
+    msg.includes("原密码") ||
+    msg.includes("密码错误") ||
+    msg.includes("current password")
+  ) {
+    return "请输入正确的当前密码";
+  }
+  if (status === 404) return "修改密码接口未部署";
+  return text || `请求失败 (HTTP ${status})`;
+}
+
+/* 多端点探测：命中非 404 即停止；将 401/403/语义错误映射为“请输入正确的当前密码” */
 async function tryChangePassword(old_password, new_password) {
   const paths = [
     "/api/user/password",
     "/api/user/change-password",
+    "/api/account/password",
+    "/api/profile/password",
     "/api/auth/password",
     "/api/auth/change-password",
     "/api/change-password",
@@ -17,33 +35,38 @@ async function tryChangePassword(old_password, new_password) {
   ];
   const payload = { old_password, new_password };
 
-  let lastErr = null;
+  let last404 = null;
   for (const url of paths) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload)
+    });
+
+    let bodyText = "";
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload)
-      });
-      // 404 继续尝试下一个；其他错误直接抛
-      if (res.status === 404) {
-        lastErr = new Error("404 Not Found: " + url);
-        continue;
+      // 尝试读取 json->message；失败再退回到纯文本
+      const maybe = await res.clone().json();
+      bodyText = maybe?.message || maybe?.error || "";
+    } catch {
+      try {
+        bodyText = await res.clone().text();
+      } catch {
+        bodyText = "";
       }
-      let data = null;
-      try { data = await res.json(); } catch {}
-      if (!res.ok) {
-        const msg = data?.message || data?.error || `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      return data || { ok: true, endpoint: url };
-    } catch (e) {
-      if (e.message?.startsWith("404 Not Found")) continue;
-      throw e;
     }
+
+    if (res.status === 404) {
+      last404 = new Error("修改密码接口未部署");
+      continue;
+    }
+    if (!res.ok) {
+      throw new Error(mapErrorMessage(res.status, bodyText));
+    }
+    return { ok: true, endpoint: url };
   }
-  throw lastErr || new Error("未找到可用的修改密码端点");
+  throw last404 || new Error("修改密码接口未部署");
 }
 
 export default function ChangePasswordModal({ open, onClose }) {
@@ -70,15 +93,12 @@ export default function ChangePasswordModal({ open, onClose }) {
     setErr("");
     setLoading(true);
     try {
-      const r = await tryChangePassword(oldPwd, newPwd);
+      await tryChangePassword(oldPwd, newPwd);
       toast.push("密码已更新", { type: "success" });
       setOldPwd(""); setNewPwd(""); setConfirmPwd("");
       onClose && onClose();
-      // 可选：控制台输出命中的端点，方便你这种偷懒王下次别乱配
-      // eslint-disable-next-line no-console
-      console.log("Password changed via:", r?.endpoint || "(unknown)");
     } catch (e) {
-      setErr(e?.message || "修改失败");
+      setErr(e?.message || "请求失败");
     } finally {
       setLoading(false);
     }
