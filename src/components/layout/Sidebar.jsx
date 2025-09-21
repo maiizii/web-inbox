@@ -53,16 +53,26 @@ export default function Sidebar({
 
       {/* 搜索区：w-full + 内阴影 */}
       <div className="px-3 pt-2 pb-2" style={{ backgroundColor: BOX_BG }}>
-        <input
-          className="input-modern w-full"
-          placeholder="搜索..."
-          value={query}
-          onChange={e => onQueryChange(e.target.value)}
-           style={{
-            boxShadow:
-              "inset 0 1px 2px rgba(0,0,0,.08), inset 0 0 0 1px rgba(0,0,0,.04)"
-          }}
-        />
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        placeholder="搜索…"
+        className="
+          w-full px-3 py-2 rounded-md
+          bg-[var(--color-surface)] text-[var(--color-text)]
+          placeholder-slate-400/80
+          outline-none
+          ring-1 ring-slate-300/70 dark:ring-white/10
+          shadow-[inset_0_2px_10px_rgba(0,0,0,0.22),inset_0_0_0_1px_rgba(0,0,0,0.10)]
+          dark:shadow-[inset_0_2px_12px_rgba(0,0,0,0.65),inset_0_0_0_1px_rgba(255,255,255,0.06)]
+          focus:ring-2 focus:ring-sky-500/50
+          focus:shadow-[inset_0_3px_14px_rgba(0,0,0,0.28)]
+          dark:focus:shadow-[inset_0_3px_16px_rgba(0,0,0,0.78)]
+          transition
+        "
+      />
+
       </div>
 
       {/* 列表 */}
