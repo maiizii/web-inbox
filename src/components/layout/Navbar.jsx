@@ -21,10 +21,17 @@ export default function Navbar() {
     }
   }
 
+  const headerStyle =
+    theme === "dark"
+      ? { backgroundColor: "var(--color-surface-alt)" } // 与编辑框同色
+      : { backgroundColor: "rgba(255,255,255,0.8)" };
+
   return (
     <>
-      {/* 保持原来的深色样式 */}
-      <header className="border-b border-slate-200/70 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-sm">
+      <header
+        className="border-b border-slate-200/70 dark:border-slate-700/70 backdrop-blur-md shadow-sm"
+        style={headerStyle}
+      >
         <div className="w-full px-4 md:px-6 h-14 flex items-center gap-4">
           <img
             src="https://img.686656.xyz/images/i/2025/09/20/68ceb0f8dcda7.png"
@@ -54,7 +61,6 @@ export default function Navbar() {
               {user?.email}
             </span>
 
-            {/* 修改密码按钮（退出前一位） */}
             <button
               onClick={() => setShowPwd(true)}
               className="px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition"
