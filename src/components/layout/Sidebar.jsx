@@ -58,10 +58,10 @@ export default function Sidebar({
           placeholder="搜索..."
           value={query}
           onChange={e => onQueryChange(e.target.value)}
-          style={{
-            boxShadow:
-              "inset 0 1px 2px rgba(0,0,0,.08), inset 0 0 0 1px rgba(0,0,0,.04)"
-          }}
+           style={{
+              boxShadow: INSET_SHADOW,
+              backgroundColor: isDark ? "var(--color-surface-alt)" : "#fff"
+            }}
         />
       </div>
 
