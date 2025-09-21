@@ -60,6 +60,10 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
 
+  // 按需滚动：内容不溢出则隐藏滚动条，溢出才显示
+  const [editorCanScroll, setEditorCanScroll] = useState(false);
+  const [previewCanScroll, setPreviewCanScroll] = useState(false);
+
   // 引用
   const splitContainerRef   = useRef(null);
   const editorScrollRef     = useRef(null);
@@ -192,7 +196,7 @@ export default function BlockEditorAuto({
     if (!m) return 1;
     m.textContent = line.length ? line : "·";
     const lh = parseFloat(getComputedStyle(m).lineHeight) || 20;
-    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
+    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh)); // 向上取整
     return rows;
   }
   function updateLineNumsWrapped(txt) {
@@ -288,11 +292,22 @@ export default function BlockEditorAuto({
   function detectOverflow() {
     if (overflowCheckTimerRef.current) cancelAnimationFrame(overflowCheckTimerRef.current);
     overflowCheckTimerRef.current = requestAnimationFrame(() => {
-      const ta = textareaRef.current; if (ta) { ta.classList.toggle("no-v-scroll", ta.scrollHeight <= ta.clientHeight + 1); }
-      const pv = previewScrollRef.current; if (pv) { pv.classList.toggle("no-v-scroll", pv.scrollHeight <= pv.clientHeight + 1); }
+      const ta = textareaRef.current;
+      if (ta) {
+        const can = ta.scrollHeight > ta.clientHeight + 1;
+        setEditorCanScroll(can);
+        ta.classList.toggle("no-v-scroll", !can);
+      }
+      const pv = previewScrollRef.current;
+      if (pv) {
+        const can = pv.scrollHeight > pv.clientHeight + 1;
+        setPreviewCanScroll(can);
+        pv.classList.toggle("no-v-scroll", !can);
+      }
     });
   }
-  useEffect(() => { detectOverflow(); }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
+  useEffect(() => { detectOverflow(); },
+    [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
   // 图片上传
   async function persistAfterImage(newContent) {
@@ -475,7 +490,7 @@ export default function BlockEditorAuto({
     detectOverflow();
   }
 
-  // 顶部工具条（PC 右对齐按钮；移动端也显示保存状态）
+  // 顶部工具条（PC 右对齐按钮；移动端显示返回/撤销重做/预览/保存状态）
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
@@ -513,14 +528,13 @@ export default function BlockEditorAuto({
             {showPreview && (
               <>
                 <button type="button" onClick={() => setSyncScrollEnabled(v => !v)} className="btn-outline-modern !px-2.5 !py-1.5" title="同步滚动开/关">{syncScrollEnabled ? "同步滚动:开" : "同步滚动:关"}</button>
-                <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "左右预览" : "上下预览"}</button>
+                <button type="button" onClick={() => setPreviewMode(m => (m === "vertical" ? "horizontal" : "vertical"))} className="btn-outline-modern !px-3 !py-1.5" title="切换预览布局">{previewMode === "vertical" ? "上下预览" : "左右预览"}</button>
               </>
             )}
             <button type="button" onClick={() => setShowPreview(p => !p)} className="btn-outline-modern !px-3 !py-1.5">{showPreview ? "隐藏预览" : "显示预览"}</button>
           </>
         )}
 
-        {/* 保存状态 —— 移动端也显示 */}
         <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
           {saving ? "保存中" : error ? <button onClick={doSave} className="text-red-500 hover:underline">重试</button> : dirty ? "待保存" : "已保存"}
         </div>
@@ -545,21 +559,24 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // —— 移动端：单屏编辑/预览（编辑时隐藏行号）
+  // 移动端：单屏编辑/预览
   if (isMobile) {
     return (
       <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
         {TopBar}
         {mobileView === "edit" ? (
-          <div className="rounded-md" style={{ flex: "1 1 0", minHeight: 0, display: "flex" }}>
+          <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
             <div
-              className="custom-scroll"
+              className="editor-scroll custom-scroll"
               ref={editorScrollRef}
-              style={{ flex: "1 1 0", minHeight: 0, overflow: "auto", display: "flex" }}
+              style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
             >
-              <div className="editor-inner" style={{ flex: "1 1 0", minHeight: 0, display: "flex" }}>
-                {/* 移动端不显示行号 */}
-                <div className="editor-text-wrapper" style={{ flex: "1 1 0", minHeight: 0 }}>
+              <div className="editor-inner">
+                {/* 行号：移动端也保留（镜像测量） */}
+                <div className="editor-line-numbers">
+                  <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
+                </div>
+                <div className="editor-text-wrapper">
                   <textarea
                     ref={textareaRef}
                     className="editor-textarea custom-scroll"
@@ -571,14 +588,15 @@ export default function BlockEditorAuto({
                     onBlur={onBlur}
                     onKeyDown={handleKeyDown}
                     style={{
-                      overflow: "auto",
+                      flex: "1 1 0",
+                      minHeight: 0,
+                      overflowX: "hidden",
+                      overflowY: editorCanScroll ? "auto" : "hidden",
                       whiteSpace: "pre-wrap",
                       wordBreak: "break-word",
                       background: "var(--color-surface)",
                       color: "var(--color-text)",
-                      paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)",
-                      flex: "1 1 0",
-                      minHeight: 0
+                      paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)"
                     }}
                   />
                 </div>
@@ -586,11 +604,18 @@ export default function BlockEditorAuto({
             </div>
           </div>
         ) : (
-          <div className="rounded-md" style={{ flex: "1 1 0", minHeight: 0, display: "flex" }}>
+          <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
             <div
               ref={previewScrollRef}
-              className="custom-scroll"
-              style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}
+              className="preview-scroll custom-scroll"
+              style={{
+                flex: "1 1 0",
+                minHeight: 0,
+                maxHeight: "100%",
+                overflowX: "hidden",
+                overflowY: previewCanScroll ? "auto" : "hidden",
+                background: "var(--color-surface)"
+              }}
             >
               <div
                 className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
@@ -603,53 +628,30 @@ export default function BlockEditorAuto({
     );
   }
 
-  // —— 桌面端：分屏（固定高度容器内滚动）
-  const isVertical = previewMode === "vertical"; // vertical=左右 | horizontal=上下
-  const editorFlex = showPreview ? `${Math.max(MIN_RATIO, Math.min(MAX_RATIO, splitRatio))} 1 0` : "1 1 0";
-  const previewFlex = showPreview ? `${Math.max(MIN_RATIO, Math.min(MAX_RATIO, 1 - splitRatio))} 1 0` : "0 1 0";
-
+  // 桌面端：分屏（两个面板都固定在容器内滚动）
   return (
-    <div
-      className="h-full flex flex-col overflow-hidden"
-      onPaste={handlePaste}
-      onDrop={handleDrop}
-      onDragOver={e => e.preventDefault()}
-    >
+    <div className="h-full flex flex-col overflow-hidden" onPaste={handlePaste} onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
       {TopBar}
-
-      {/* 固定高度容器：flex:1 + minHeight:0，内部 pane 才会各自滚动 */}
       <div
         ref={splitContainerRef}
-        className={`flex-1 min-h-0 flex overflow-hidden ${isVertical ? "flex-row" : "flex-col"}`}
+        className={`editor-split-root flex-1 min-h-0 flex ${showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"} overflow-hidden`}
         style={{ height: "100%" }}
       >
-        {/* 编辑 pane */}
+        {/* 编辑面板 */}
         <div
-          className="rounded-md"
-          style={{
-            flex: editorFlex,
-            minWidth: 0,
-            minHeight: 0,
-            display: "flex",
-            overflow: "hidden"
-          }}
+          className="editor-pane rounded-md"
+          style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}
         >
           <div
-            className="custom-scroll"
+            className="editor-scroll custom-scroll"
             ref={editorScrollRef}
-            style={{ flex: "1 1 0", minHeight: 0, overflow: "auto", display: "flex", background: "var(--color-surface)" }}
+            style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
           >
-            <div className="editor-inner" style={{ flex: "1 1 0", minHeight: 0, display: "flex" }}>
+            <div className="editor-inner">
               <div className="editor-line-numbers">
-                <pre
-                  ref={lineNumbersInnerRef}
-                  className="editor-line-numbers-inner"
-                  aria-hidden="true"
-                >
-                  {lineNumbers}
-                </pre>
+                <pre ref={lineNumbersInnerRef} className="editor-line-numbers-inner" aria-hidden="true">{lineNumbers}</pre>
               </div>
-              <div className="editor-text-wrapper" style={{ flex: "1 1 0", minHeight: 0 }}>
+              <div className="editor-text-wrapper">
                 <textarea
                   ref={textareaRef}
                   className="editor-textarea custom-scroll"
@@ -661,11 +663,12 @@ export default function BlockEditorAuto({
                   onBlur={onBlur}
                   onKeyDown={handleKeyDown}
                   style={{
-                    overflow: "auto",
-                    background: "var(--color-surface)",
-                    color: "var(--color-text)",
                     flex: "1 1 0",
-                    minHeight: 0
+                    minHeight: 0,
+                    overflowX: "hidden",
+                    overflowY: editorCanScroll ? "auto" : "hidden",
+                    background: "var(--color-surface)",
+                    color: "var(--color-text)"
                   }}
                 />
               </div>
@@ -673,40 +676,40 @@ export default function BlockEditorAuto({
           </div>
         </div>
 
-        {/* 分割条 */}
+        {/* 预览分隔条 + 预览面板 */}
         {showPreview && (
-          <div
-            className={`split-divider ${isVertical ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`}
-            onMouseDown={startDividerDrag}
-            onTouchStart={startDividerDrag}
-            onDoubleClick={resetSplit}
-            title="拖动调整比例，双击恢复 50%"
-          />
-        )}
-
-        {/* 预览 pane */}
-        {showPreview && (
-          <div
-            className="rounded-md"
-            style={{
-              flex: previewFlex,
-              minWidth: 0,
-              minHeight: 0,
-              display: "flex",
-              overflow: "hidden"
-            }}
-          >
+          <>
             <div
-              ref={previewScrollRef}
-              className="custom-scroll"
-              style={{ flex: "1 1 0", minHeight: 0, overflow: "auto", background: "var(--color-surface)" }}
+              className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${draggingDivider ? "dragging" : ""}`}
+              onMouseDown={startDividerDrag}
+              onTouchStart={startDividerDrag}
+              onDoubleClick={resetSplit}
+              title="拖动调整比例，双击恢复 50%"
+            />
+            <div
+              className="preview-pane rounded-md"
+              style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}
             >
               <div
-                className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
+                ref={previewScrollRef}
+                className="preview-scroll custom-scroll"
+                style={{
+                  flex: "1 1 0",
+                  minHeight: 0,
+                  maxHeight: "100%",
+                  overflowX: "hidden",
+                  overflowY: previewCanScroll ? "auto" : "hidden",
+                  background: "var(--color-surface)"
+                }}
+              >
+                <div
+                  className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
+                  style={{ maxWidth: "100%" }}
+                  dangerouslySetInnerHTML={{ __html: previewHtml }}
+                />
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
