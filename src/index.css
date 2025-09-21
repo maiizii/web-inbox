@@ -474,6 +474,4 @@ body.editor-resizing,body.editor-resizing *{user-select:none!important;}
 /* ==========================================================================
    END
    ========================================================================== */
-/* 可选：隐藏无滚动时的滚动条（双保险，不会影响上面的逻辑） */
-.no-v-scroll { overflow-y: hidden !important; }
-.preview-content img { max-width: 100%; height: auto; } /* 预览内图片不撑爆容器 */
+
