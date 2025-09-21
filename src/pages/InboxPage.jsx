@@ -30,24 +30,6 @@ function sortBlocksWithLatestOnTop(blocks, latestBlockId) {
   return blocks;
 }
 
-// 简易预览渲染（供移动独立预览屏）
-function escapeHtml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-function renderPlainWithImages(raw = "") {
-  if (!raw) return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
-  const re = /!\[([^\]]*?)\]\(([^)\s]+)\)/g;
-  let out = "", last = 0, m;
-  while ((m = re.exec(raw)) !== null) {
-    out += escapeHtml(raw.slice(last, m.index));
-    out += `<img class="preview-img" src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}" loading="lazy" />`;
-    last = m.index + m[0].length;
-  }
-  out += escapeHtml(raw.slice(last));
-  return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
-}
-
 export default function InboxPage() {
   const toast = useToast();
   const [blocks, setBlocks] = useState([]);
@@ -57,21 +39,6 @@ export default function InboxPage() {
   const [draggingId, setDraggingId] = useState(null);
   const [manualOrder, setManualOrder] = useState(null);
   const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
-
-  // 移动端检测与两屏视图状态
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia("(max-width: 767px)").matches
-      : false
-  );
-  useEffect(() => {
-    const mql = window.matchMedia("(max-width: 767px)");
-    const handler = e => setIsMobile(e.matches);
-    try { mql.addEventListener("change", handler); } catch { mql.addListener(handler); }
-    return () => { try { mql.removeEventListener("change", handler); } catch { mql.removeListener(handler); } };
-  }, []);
-  const [mobileView, setMobileView] = useState("list");
-  useEffect(() => { if (!isMobile) setMobileView("list"); }, [isMobile]);
 
   async function loadBlocks() {
     try {
@@ -159,8 +126,6 @@ export default function InboxPage() {
         apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
         return newList;
       });
-
-      if (isMobile) setMobileView("edit");
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });
       setBlocks(prev => prev.filter(b => b.id !== optimistic.id));
@@ -179,13 +144,13 @@ export default function InboxPage() {
       }
       if (lastEditedBlockId === id) setLastEditedBlockId(null);
       if (manualOrder) setManualOrder(manualOrder.filter(i => i !== id));
-      if (isMobile) setMobileView("list");
     } catch (e) {
       toast.push(e.message || "删除失败", { type: "error" });
       setBlocks(snapshot);
     }
   }
 
+  // 桌面拖拽
   function onDragStart(id) { setDraggingId(id); }
   function onDragOver(e, overId) {
     e.preventDefault();
@@ -216,68 +181,27 @@ export default function InboxPage() {
     }
   }
 
-  // ======= 移动端两屏：列表 / 编辑 / 预览 =======
-  if (isMobile) {
-    if (mobileView === "list") {
-      return (
-        <div className="flex flex-1 overflow-hidden rounded-lg">
-          <Sidebar
-            blocks={sortedBlocks}
-            selectedId={selectedId}
-            onSelect={(id) => { setSelectedId(id); setMobileView("edit"); }}
-            onCreate={createEmptyBlock}
-            query={q}
-            onQueryChange={setQ}
-            draggingId={draggingId}
-            onDragStart={onDragStart}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-          />
-        </div>
-      );
-    }
-
-    if (mobileView === "edit") {
-      return (
-        <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface bg-white dark:bg-slate-900">
-          <BlockEditorAuto
-            block={selected}
-            onChange={optimisticChange}
-            onDelete={deleteBlock}
-            onImmediateSave={persistUpdate}
-            // 这些 props 若组件未实现会被忽略；后续长文件会接管
-            mobileMode={true}
-            onMobileBack={() => setMobileView("list")}
-            onMobilePreviewRequest={() => setMobileView("preview")}
-          />
-        </div>
-      );
-    }
-
-    // 预览独立屏
-    const html = renderPlainWithImages(selected?.content || "");
-    return (
-      <div className="flex-1 min-h-0 rounded-lg overflow-hidden bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-        <div className="flex items-center gap-2 py-3 px-4 border-b border-slate-200 dark:border-slate-700">
-          <div className="flex-1 text-lg font-semibold truncate select-none">
-            {(selected?.content || "").split("\n")[0].slice(0,64) || "(空)"}
-          </div>
-          <button className="btn-outline-modern !px-3 !py-1.5" onClick={() => setMobileView("edit")}>返回编辑</button>
-          <button className="btn-outline-modern !px-3 !py-1.5" onClick={() => setMobileView("list")}>返回列表</button>
-        </div>
-        <div className="preview-scroll custom-scroll dark:bg-slate-900 h-[calc(100%-48px)]">
-          <div
-            className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text dark:text-slate-300"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        </div>
-      </div>
-    );
+  // 移动端：快速上/下移
+  async function onQuickMove(id, dir) {
+    setBlocks(prev => {
+      const list = [...prev];
+      const i = list.findIndex(b => b.id === id);
+      if (i === -1) return prev;
+      const j = i + dir;
+      if (j < 0 || j >= list.length) return prev;
+      const [item] = list.splice(i, 1);
+      list.splice(j, 0, item);
+      // 立即持久化
+      apiReorderBlocks(list.map((b, idx) => ({ id: b.id, position: idx + 1 })))
+        .then(() => toast.push("顺序已保存", { type: "success" }))
+        .catch(err => toast.push(err.message || "保存顺序失败", { type: "error" }));
+      return list;
+    });
   }
 
-  // ======= 桌面：左右分栏 =======
   return (
     <div className="flex flex-1 overflow-hidden rounded-lg gap-2 bg-transparent">
+      {/* 小屏：左栏可全屏显示，编辑在右侧组件内部处理；这里保持布局不变 */}
       <Sidebar
         blocks={sortedBlocks}
         selectedId={selectedId}
@@ -289,6 +213,7 @@ export default function InboxPage() {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        onQuickMove={onQuickMove} // 移动端排序
       />
       <div className="flex-1 min-h-0 rounded-lg overflow-hidden app-surface p-2">
         <BlockEditorAuto
