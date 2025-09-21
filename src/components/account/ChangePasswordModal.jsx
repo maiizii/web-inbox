@@ -52,24 +52,27 @@ export default function ChangePasswordModal({ open, onClose }) {
     }
   }
 
-  async function submit() {
-    const v = validate();
-    if (v) { setErr(v); return; }
-    setErr(""); setLoading(true);
-    try {
-      const r = await apiChangePassword(oldPwd, newPwd);
-      setDbg(prev => `[CHANGE] ${JSON.stringify(r)}\n` + prev);
-      toast.push("密码已更新", { type: "success" });
-      setOldPwd(""); setNewPwd(""); setConfirmPwd("");
-      onClose && onClose();
-    } catch (e) {
-      const msg = e?.message || "请求失败";
-      setErr(msg);
-      setDbg(prev => `[CHANGE-ERR] ${msg}\n` + prev);
-    } finally {
-      setLoading(false);
-    }
+// 替换 submit() 函数
+async function submit() {
+  const v = validate();
+  if (v) { setErr(v); return; }
+  setErr(""); setLoading(true);
+  try {
+    const r = await apiChangePassword(oldPwd, newPwd);
+    if (r?._trace) setDbg(prev => `[TRACE]\n${r._trace}\n` + prev);
+    toast.push("密码已更新", { type: "success" });
+    setOldPwd(""); setNewPwd(""); setConfirmPwd("");
+    onClose && onClose();
+  } catch (e) {
+    const msg = e?.message || "请求失败";
+    setErr(msg);
+    const tr = e?._trace || "";
+    setDbg(prev => `[CHANGE-ERR] ${msg}\n${tr ? `[TRACE]\n${tr}\n` : ""}` + prev);
+  } finally {
+    setLoading(false);
   }
+}
+
 
   return (
     <div
