@@ -45,14 +45,14 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="mx-auto h-24">
+          <h1 className="mx-auto h-24 justify-center">
             <img
               src="https://img.686656.xyz/images/i/2025/09/20/68ceb0f8dcda7.png"
               alt="Web Tips"
-              className="h-full object-contain mx-auto"
+              className="h-full object-contain w-auto mx-auto"
             />
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-slate-500 dark:text-slate-400" text-center">
             {mode === "login" ? "登录到你的WEB TIPS" : "创建你的账号（需要邀请码）"}
           </p>
         </div>
