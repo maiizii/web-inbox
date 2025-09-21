@@ -84,20 +84,53 @@ export async function apiUploadImage(file) {
   throw new Error("图片上传响应无效");
 }
 
-// …保留你现有的导入与基础封装
-
+// 覆盖原有的 apiChangePassword —— 多端点探测 + 统一文案
 export async function apiChangePassword(old_password, new_password) {
-  const res = await fetch("/api/user/password", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ old_password, new_password })
-  });
-  let data = null;
-  try { data = await res.json(); } catch {}
-  if (!res.ok) {
-    const msg = data?.message || data?.error || `HTTP ${res.status}`;
-    throw new Error(msg);
+  const endpoints = [
+    "/api/password",               // 推荐后端落点（Pages Functions 示例已给过）
+    "/api/user/password",
+    "/api/user/change-password",
+    "/api/account/password",
+    "/api/profile/password",
+    "/api/auth/password",
+    "/api/auth/change-password",
+    "/api/change-password"
+  ];
+  const payload = { old_password, new_password };
+
+  const mapErr = (status, text = "") => {
+    const s = (text || "").toLowerCase();
+    if (status === 401 || status === 403) return "请输入正确的当前密码";
+    if (
+      s.includes("wrong password") || s.includes("invalid password") ||
+      s.includes("incorrect password") || s.includes("旧密码") ||
+      s.includes("原密码") || s.includes("密码错误") || s.includes("current password")
+    ) return "请输入正确的当前密码";
+    if (s.includes("user not found") || s.includes("no such user")) return "请输入正确的当前密码";
+    if (status === 404) return "修改密码接口未部署";
+    return `HTTP ${status}${text ? " - " + text : ""}`;
+  };
+
+  let last404 = null;
+  for (const url of endpoints) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload)
+    });
+
+    let bodyMsg = "";
+    try {
+      const j = await res.clone().json();
+      bodyMsg = j?.message || j?.error || "";
+    } catch {
+      try { bodyMsg = await res.clone().text(); } catch { bodyMsg = ""; }
+    }
+
+    if (res.status === 404) { last404 = new Error("修改密码接口未部署"); continue; }
+    if (!res.ok) throw new Error(mapErr(res.status, bodyMsg));
+    return (bodyMsg && typeof bodyMsg === "object") ? bodyMsg : { ok: true, endpoint: url };
   }
-  return data || { ok: true };
+  throw last404 || new Error("修改密码接口未部署");
 }
