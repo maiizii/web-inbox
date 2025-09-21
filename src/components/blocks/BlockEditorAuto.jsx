@@ -10,7 +10,6 @@ const HISTORY_GROUP_MS = 800;
 const INDENT = "  ";
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
-// 移动端行号兜底冗余行，避免“滑不到底”
 const MOBILE_LINE_SLACK = 3;
 
 export default function BlockEditorAuto({
@@ -60,7 +59,7 @@ export default function BlockEditorAuto({
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
 
-  // 按需滚动：内容不溢出则隐藏滚动条，溢出才显示
+  // 按需滚动
   const [editorCanScroll, setEditorCanScroll] = useState(false);
   const [previewCanScroll, setPreviewCanScroll] = useState(false);
 
@@ -71,10 +70,13 @@ export default function BlockEditorAuto({
   const textareaRef         = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
-  // 镜像测量元素（移动端行号计算，虽去掉渲染，但 PC 仍可用）
+  // 镜像测量元素（移动端行号计算）
   const mirrorRef = useRef(null);
 
+  // 关键：记录“已保存的内容”，用于 dirty 判定；以及“是否发生真实编辑”
   const lastPersisted = useRef({ content: "" });
+  const hasUserEditedRef = useRef(false);
+
   const currentBlockIdRef = useRef(block?.id || null);
 
   const dividerDragRef     = useRef(null);
@@ -152,6 +154,8 @@ export default function BlockEditorAuto({
     setContent(snap);
     updateLineNumsWrapped(snap);
     updatePreview(snap);
+    // 撤销/重做属于“编辑”
+    hasUserEditedRef.current = true;
     requestAnimationFrame(() => { isRestoringHistoryRef.current = false; detectOverflow(); });
   }
   function handleUndoRedoKey(e) {
@@ -162,7 +166,7 @@ export default function BlockEditorAuto({
     else if (e.key === "y" || e.key === "Y") { e.preventDefault(); restoreHistory(1); }
   }
 
-  // 镜像测量 —— 行号/换行（移动端不渲染行号，但 PC 仍需）
+  // 镜像测量 —— 移动端行号/换行
   function ensureMirrorReady() {
     if (mirrorRef.current || !textareaRef.current) return;
     const div = document.createElement("div");
@@ -196,7 +200,7 @@ export default function BlockEditorAuto({
     if (!m) return 1;
     m.textContent = line.length ? line : "·";
     const lh = parseFloat(getComputedStyle(m).lineHeight) || 20;
-    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh)); // 向上取整
+    const rows = Math.max(1, Math.ceil((m.scrollHeight + 0.5) / lh));
     return rows;
   }
   function updateLineNumsWrapped(txt) {
@@ -221,14 +225,19 @@ export default function BlockEditorAuto({
     setLineNumbers(out.join("\n") || "1");
   }
 
-  // 初始与同步
+  // 初始与同步（关键修复：切块时先重置 lastPersisted，再 setContent）
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
+    // 这里先重置“已保存快照”，避免刚切换就被判脏
+    lastPersisted.current = { content: init };
+    hasUserEditedRef.current = false; // 切换后尚未编辑
     setContent(init);
     ensureHistory(block?.id, init);
     updateLineNumsWrapped(init);
     updatePreview(init);
+    setSaving(false);
+    setError("");
     requestAnimationFrame(() => { syncLineNumbersPadding(); detectOverflow(); });
   }, [block?.id]);
 
@@ -243,9 +252,12 @@ export default function BlockEditorAuto({
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
-  // 自动保存
+  // 自动保存（仅当发生真实编辑时才会执行）
   async function doSave() {
-    if (!block || block.optimistic || !dirty) return;
+    if (!block || block.optimistic) return;
+    if (!hasUserEditedRef.current) return; // 关键：未编辑就不保存
+    if (!dirty) return;
+
     const saveId = block.id;
     setSaving(true); setError("");
     const payload = { content };
@@ -254,9 +266,14 @@ export default function BlockEditorAuto({
       let real;
       try { real = await onImmediateSave(block.id, payload); }
       catch (err) { if (safeUpdateFallback) real = await safeUpdateFallback(block.id, payload, err); else throw err; }
-      if (currentBlockIdRef.current === saveId) lastPersisted.current = { content };
-    } catch (err) { if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败"); }
-    finally { if (currentBlockIdRef.current === saveId) { setSaving(false); } }
+      if (currentBlockIdRef.current === saveId) {
+        lastPersisted.current = { content };
+      }
+    } catch (err) {
+      if (currentBlockIdRef.current === saveId) setError(err.message || "保存失败");
+    } finally {
+      if (currentBlockIdRef.current === saveId) setSaving(false);
+    }
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
   useEffect(() => { if (dirty) debouncedSave(); }, [content, debouncedSave, dirty]);
@@ -309,7 +326,7 @@ export default function BlockEditorAuto({
   useEffect(() => { detectOverflow(); },
     [content, showPreview, previewMode, splitRatio, isMobile, mobileView]);
 
-  // 图片上传
+  // 图片上传（属于编辑，需标记）
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -324,6 +341,7 @@ export default function BlockEditorAuto({
   }
   async function uploadOne(file) {
     if (!file || !block) return;
+    hasUserEditedRef.current = true; // 上传图片算编辑
     const currentId = block.id;
     const tempId = "uploading-" + Date.now() + "-" + Math.random().toString(16).slice(2);
     const placeholder = `![${tempId}](uploading)`;
@@ -377,7 +395,7 @@ export default function BlockEditorAuto({
     for (const f of files) await uploadOne(f);
   }, [block]);
 
-  // Tab 缩进
+  // Tab 缩进（视为编辑）
   function handleIndentKey(e) {
     if (e.key !== "Tab") return;
     const ta = textareaRef.current; if (!ta) return;
@@ -390,6 +408,7 @@ export default function BlockEditorAuto({
     const target = text.slice(lineStartIdx, effectiveEnd);
     const after = text.slice(effectiveEnd);
     const lines = target.split("\n");
+    hasUserEditedRef.current = true; // 视为编辑
     if (e.shiftKey) {
       let removeFirst = 0;
       const newLines = lines.map((l, i) => {
@@ -410,7 +429,7 @@ export default function BlockEditorAuto({
       const newContent = before + newTarget + after;
       const delta = newLines.length * INDENT.length;
       setContent(newContent); updateLineNumsWrapped(newContent); updatePreview(newContent); pushHistory(newContent); detectOverflow();
-      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT长度 : delta)); });
+      requestAnimationFrame(() => { const ta2 = textareaRef.current; if (!ta2) return; ta2.focus(); ta2.setSelectionRange(start + INDENT.length, end + (lines.length === 1 ? INDENT.length : delta)); });
     }
   }
   function handleKeyDown(e) { handleUndoRedoKey(e); handleIndentKey(e); }
@@ -481,8 +500,9 @@ export default function BlockEditorAuto({
     };
   }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
 
-  // 内容变化
+  // 内容变化（用户输入才触发：标记 hasUserEdited）
   function handleContentChange(v) {
+    hasUserEditedRef.current = true;
     setContent(v);
     updateLineNumsWrapped(v);
     updatePreview(v);
@@ -490,7 +510,7 @@ export default function BlockEditorAuto({
     detectOverflow();
   }
 
-  // 顶部工具条（PC 右对齐按钮；移动端显示返回/撤销重做/预览/保存状态）
+  // 顶部工具条
   const TopBar = (
     <div
       className="flex items-center justify-between gap-2 flex-wrap py-3 px-4 border-b"
@@ -559,7 +579,7 @@ export default function BlockEditorAuto({
 
   const disabledByCreation = !!(block.optimistic && String(block.id).startsWith("tmp-"));
 
-  // 移动端：单屏编辑/预览（去掉行号）
+  // 移动端：单屏编辑/预览
 if (isMobile) {
   return (
     <div
