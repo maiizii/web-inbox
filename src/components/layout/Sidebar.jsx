@@ -20,16 +20,19 @@ export default function Sidebar({
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
-  const GAP_BG   = isDark ? "var(--color-bg)" : "#ffffff";
-  const BOX_BG   = isDark ? "var(--color-surface)" : "#ffffff";
-  const CARD_BG  = isDark ? "var(--color-surface-alt)" : "#ffffff";
-  const HOVER_BG = isDark ? "#27425b" : "#f1f5f9";
+  // —— 颜色与阴影（与编辑器配色同系）
+  const GAP_BG   = isDark ? "var(--color-bg)" : "#ffffff";             // 外层缝隙
+  const BOX_BG   = isDark ? "var(--color-surface)" : "#ffffff";        // 内部块
+  const CARD_BG  = isDark ? "var(--color-surface-alt)" : "#ffffff";    // 未选中卡片
+  const HOVER_BG = isDark ? "#27425b" : "#f1f5f9";                     // 悬停更亮
   const BORDER   = isDark ? "var(--color-border)" : "#e2e8f0";
 
+  // 内阴影（适度，移动端也清楚）
   const INSET_SHADOW = isDark
     ? "inset 0 1px 4px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.08)"
     : "inset 0 1px 4px rgba(0,0,0,.12), inset 0 0 0 1px rgba(0,0,0,.05)";
 
+  // 移动端判断（仅用于“可拖拽/可调整”文案与上下按钮）
   const isMobile = useMemo(() => {
     if (typeof window === "undefined") return false;
     return window.matchMedia("(max-width: 768px)").matches;
@@ -38,9 +41,9 @@ export default function Sidebar({
   return (
     <aside
       className="
-        w-full md:w-72 shrink-0 rounded-lg
+        w-full md:w-72 shrink-0 rounded-lg overflow-hidden
         border-r border-slate-200 dark:border-slate-700
-        flex flex-col min-h-0
+        flex flex-col
       "
       style={{ backgroundColor: GAP_BG }}
       onDragOver={(e) => e.preventDefault()}
@@ -48,7 +51,7 @@ export default function Sidebar({
     >
       {/* 顶部工具条 */}
       <div
-        className="p-2 border-b border-slate-200 dark:border-slate-700 shrink-0"
+        className="p-2 border-b border-slate-200 dark:border-slate-700"
         style={{ backgroundColor: BOX_BG }}
       >
         <div className="flex items-center gap-2">
@@ -66,8 +69,8 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* 搜索区 */}
-      <div className="px-3 pt-2 pb-2 shrink-0" style={{ backgroundColor: BOX_BG }}>
+      {/* 搜索区（带内阴影，移动端也明显） */}
+      <div className="px-3 pt-2 pb-2" style={{ backgroundColor: BOX_BG }}>
         <div className="relative">
           <input
             className="
@@ -87,17 +90,10 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* 列表：占据剩余空间并可滚动 */}
+      {/* 列表 */}
       <div
-        className="
-          flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scroll
-          px-2 pb-4 mt-2
-        "
-        style={{
-          backgroundColor: BOX_BG,
-          // 防止滚动条出现/消失引起抖动
-          scrollbarGutter: "stable",
-        }}
+        className="flex-1 overflow-auto custom-scroll px-2 pb-4 mt-2"
+        style={{ backgroundColor: BOX_BG }}
       >
         {blocks.map((b) => {
           const firstLine = (b.content || "").split("\n")[0] || "(空)";
@@ -117,7 +113,7 @@ export default function Sidebar({
           const titleCls = isSel
             ? "text-white"
             : isDark
-            ? "text-slate-200"
+            ? "text-slate-200" // 深色未选中标题用浅色，易读
             : "text-slate-900";
 
           return (
@@ -154,6 +150,7 @@ export default function Sidebar({
                   </div>
                 </div>
 
+                {/* 移动端：右侧上下移动按钮（并排） */}
                 {isMobile && (onMoveUp || onMoveDown) && (
                   <div className="flex flex-row items-center gap-1 ml-1">
                     <button
