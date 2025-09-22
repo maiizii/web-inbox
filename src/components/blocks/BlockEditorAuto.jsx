@@ -1,5 +1,4 @@
 // src/components/blocks/BlockEditorAuto.jsx
-// src/components/blocks/BlockEditorAuto.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Undo2, Redo2, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { apiUploadImage } from "../../api/cloudflare.js";
@@ -129,13 +128,6 @@ export default function BlockEditorAuto({
   // 工具
   function clamp(v, a, b) {
     return Math.min(b, Math.max(a, v));
-  }
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
   }
 
   // 预览：纯文本 + 图片（仅对非图片片段做高亮）
@@ -886,7 +878,7 @@ export default function BlockEditorAuto({
 
   if (!block) {
     return (
-      <div className="h-full flex items-center justify-center text-sm text-slate-400 dark:text-slate-500">
+      <div className="h-full flex items-center justify-center text-sm text-slate-4 00 dark:text-slate-500">
         请选择左侧 Block 或点击“新建”
       </div>
     );
@@ -1012,7 +1004,7 @@ export default function BlockEditorAuto({
       className="h-full flex flex-col overflow-hidden"
       onPaste={handlePaste}
       onDrop={handleDrop}
-      onDragOver={(e) => e.preventDefault()}}
+      onDragOver={(e) => e.preventDefault()}
     >
       {TopBar}
       <div
