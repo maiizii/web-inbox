@@ -20,7 +20,7 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// 在“原始文本”中打上标记，再整体转义，最后把标记替换成 <mark>，避免破坏实体 &amp; / 标签
+// 在“原始文本”中打上标记，再整体转义，最后把标记替换成 <mark>
 function makeHighlightsFromRaw(raw, kw) {
   if (!kw) return escapeHtml(raw);
   const OPEN = "\u0001";
@@ -40,7 +40,6 @@ export default function BlockEditorAuto({
   onImmediateSave,
   safeUpdateFallback,
   onBackToList,
-  // 新增：搜索词（来自 InboxPage 的 q）
   searchQuery = ""
 }) {
   const toast = useToast();
@@ -104,15 +103,12 @@ export default function BlockEditorAuto({
   // 镜像测量元素（移动端行号计算）
   const mirrorRef = useRef(null);
 
-  // 关键：记录“已保存的内容”，用于 dirty 判定；以及“是否发生真实编辑”
+  // 关键状态
   const lastPersisted = useRef({ content: "" });
   const hasUserEditedRef = useRef(false);
-
   const currentBlockIdRef = useRef(block?.id || null);
-
   const dividerDragRef = useRef(null);
   const draggingDividerRef = useRef(false);
-
   const historyStoreRef = useRef(new Map());
   const isRestoringHistoryRef = useRef(false);
   const isSyncingScrollRef = useRef(false);
@@ -129,8 +125,15 @@ export default function BlockEditorAuto({
   function clamp(v, a, b) {
     return Math.min(b, Math.max(a, v));
   }
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
 
-  // 预览：纯文本 + 图片（仅对非图片片段做高亮）
+  // 预览渲染
   function renderPlainWithImages(raw, kw) {
     if (!raw)
       return "<span class='text-slate-400 dark:text-slate-500'>暂无内容</span>";
@@ -153,7 +156,7 @@ export default function BlockEditorAuto({
     setPreviewHtml(renderPlainWithImages(txt, kw));
   }
 
-  // 历史（撤销/重做）
+  // 历史
   function ensureHistory(blockId, init) {
     if (!blockId) return;
     if (!historyStoreRef.current.has(blockId)) {
@@ -196,7 +199,7 @@ export default function BlockEditorAuto({
     setContent(snap);
     updateLineNumsWrapped(snap);
     updatePreview(snap, searchQuery);
-    hasUserEditedRef.current = true; // 撤销/重做属于“编辑”
+    hasUserEditedRef.current = true;
     requestAnimationFrame(() => {
       isRestoringHistoryRef.current = false;
       detectOverflow();
@@ -287,7 +290,7 @@ export default function BlockEditorAuto({
     setLineNumbers(out.join("\n") || "1");
   }
 
-  // 初始与同步（切块时先重置快照，避免判脏；同步高亮）
+  // 初始与同步
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
@@ -299,7 +302,6 @@ export default function BlockEditorAuto({
     updatePreview(init, searchQuery);
     setSaving(false);
     setError("");
-    // 初始化编辑高亮
     setEditorHighlightsHtml(makeHighlightsFromRaw(init, (searchQuery || "").trim()));
     requestAnimationFrame(() => {
       syncLineNumbersPadding();
@@ -309,7 +311,7 @@ export default function BlockEditorAuto({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [block?.id]);
 
-  // 内容或搜索词变化 → 同步预览 & 编辑高亮
+  // 内容 / 搜索词变化
   useEffect(() => {
     updatePreview(content, searchQuery);
     setEditorHighlightsHtml(
@@ -332,7 +334,7 @@ export default function BlockEditorAuto({
     localStorage.setItem("previewMode", previewMode);
   }, [previewMode]);
 
-  // 自动保存（仅当发生真实编辑时）
+  // 自动保存
   async function doSave() {
     if (!block || block.optimistic) return;
     if (!hasUserEditedRef.current) return;
@@ -370,7 +372,7 @@ export default function BlockEditorAuto({
     flushSave();
   }
 
-  // 行号/滚动/溢出/高亮层度量同步
+  // 同步度量
   function syncLineNumbersPadding() {
     const ta = textareaRef.current;
     const inner = lineNumbersInnerRef.current;
@@ -384,7 +386,6 @@ export default function BlockEditorAuto({
     const hi = highlightsInnerRef.current;
     if (!ta || !hi) return;
     const cs = getComputedStyle(ta);
-    // 让覆盖层与 textarea 一致的内边距/字体/制表宽度等
     hi.style.paddingTop = cs.paddingTop;
     hi.style.paddingRight = cs.paddingRight;
     hi.style.paddingBottom = cs.paddingBottom;
@@ -393,7 +394,6 @@ export default function BlockEditorAuto({
     hi.style.lineHeight = cs.lineHeight;
     hi.style.letterSpacing = cs.letterSpacing;
     hi.style.tabSize = cs.tabSize || "2";
-    // wrap: desktop 不换行，mobile 换行
     hi.style.whiteSpace = isMobile ? "pre-wrap" : "pre";
     hi.style.wordBreak = isMobile ? "break-word" : "normal";
   }
@@ -447,7 +447,7 @@ export default function BlockEditorAuto({
     detectOverflow();
   }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView, searchQuery]);
 
-  // 图片上传（属于编辑）
+  // 图片上传
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
@@ -469,13 +469,9 @@ export default function BlockEditorAuto({
   }
   async function uploadOne(file) {
     if (!file || !block) return;
-    hasUserEditedRef.current = true; // 上传图片算编辑
+    hasUserEditedRef.current = true;
     const currentId = block.id;
-    const tempId =
-      "uploading-" +
-      Date.now() +
-      "-" +
-      Math.random().toString(16).slice(2);
+    const tempId = "uploading-" + Date.now() + "-" + Math.random().toString(16).slice(2);
     const placeholder = `![${tempId}](uploading)`;
     setContent((prev) => {
       const nl = prev && !prev.endsWith("\n") ? "\n" : "";
@@ -546,7 +542,7 @@ export default function BlockEditorAuto({
     [block]
   );
 
-  // Tab 缩进（视为编辑）
+  // Tab 缩进
   function handleIndentKey(e) {
     if (e.key !== "Tab") return;
     const ta = textareaRef.current;
@@ -713,7 +709,7 @@ export default function BlockEditorAuto({
     };
   }, [showPreview, syncScrollEnabled, previewMode, content, isMobile]);
 
-  // 内容变化（用户输入才触发：标记 hasUserEdited）
+  // 内容变化
   function handleContentChange(v) {
     hasUserEditedRef.current = true;
     setContent(v);
@@ -850,23 +846,16 @@ export default function BlockEditorAuto({
         )}
 
         <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
-          {saving ? (
-            "保存中"
-          ) : error ? (
+          {saving ? "保存中" : error ? (
             <button onClick={doSave} className="text-red-500 hover:underline">
               重试
             </button>
-          ) : dirty ? (
-            "待保存"
-          ) : (
-            "已保存"
-          )}
+          ) : dirty ? "待保存" : "已保存"}
         </div>
 
         <button
           onClick={() => {
-            if (confirm("确定删除该 Block？"))
-              onDelete && onDelete(block.id);
+            if (confirm("确定删除该 Block？")) onDelete && onDelete(block.id);
           }}
           className="btn-danger-modern !px-3 !py-1.5"
         >
@@ -878,7 +867,7 @@ export default function BlockEditorAuto({
 
   if (!block) {
     return (
-      <div className="h-full flex items-center justify-center text-sm text-slate-4 00 dark:text-slate-500">
+      <div className="h-full flex items-center justify-center text-sm text-slate-400 dark:text-slate-500">
         请选择左侧 Block 或点击“新建”
       </div>
     );
@@ -888,7 +877,7 @@ export default function BlockEditorAuto({
     block.optimistic && String(block.id).startsWith("tmp-")
   );
 
-  // 移动端：单屏编辑/预览（移动端不渲染行号，但渲染高亮覆盖层）
+  // —— 移动端：单屏
   if (isMobile) {
     return (
       <div
@@ -901,26 +890,21 @@ export default function BlockEditorAuto({
         {mobileView === "edit" ? (
           <div
             className="editor-pane rounded-md"
-            // 关键修复：让编辑面板参与伸缩并拿到剩余高度
             style={{ flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}
           >
             <div
               className="editor-scroll custom-scroll"
               ref={editorScrollRef}
-              // 关键修复：使内部链路为 flex，高度可传递到 textarea
               style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", display: "flex", height: "100%" }}
             >
               <div
                 className="editor-inner"
-                // 关键修复：内层吃满，便于子元素 100% 高度
                 style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minHeight: 0, height: "100%" }}
               >
                 <div
                   className="editor-text-wrapper"
-                  // 关键修复：包裹层也要成为 flex 容器并吃满
                   style={{ position: "relative", display: "flex", flex: "1 1 0", minHeight: 0, height: "100%" }}
                 >
-                  {/* 高亮覆盖层：仅在有搜索词时渲染；文字透明，只显示背景 */}
                   {(searchQuery || "").trim() ? (
                     <pre
                       ref={highlightsInnerRef}
@@ -934,9 +918,7 @@ export default function BlockEditorAuto({
                         color: "transparent",
                         zIndex: 2
                       }}
-                      dangerouslySetInnerHTML={{
-                        __html: editorHighlightsHtml
-                      }}
+                      dangerouslySetInnerHTML={{ __html: editorHighlightsHtml }}
                     />
                   ) : null}
                   <textarea
@@ -951,7 +933,6 @@ export default function BlockEditorAuto({
                     }}
                     onBlur={onBlur}
                     onKeyDown={handleKeyDown}
-                    // 关键修复：textarea 必须 100% 高，内部滚动才能到底
                     style={{
                       flex: "1 1 0",
                       minHeight: 0,
@@ -962,8 +943,7 @@ export default function BlockEditorAuto({
                       wordBreak: "break-word",
                       background: "var(--color-surface)",
                       color: "var(--color-text)",
-                      paddingBottom:
-                        "calc(env(safe-area-inset-bottom,0px) + 28px)",
+                      paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)",
                       position: "relative",
                       zIndex: 1,
                       caretColor: "var(--color-text)"
@@ -974,14 +954,17 @@ export default function BlockEditorAuto({
             </div>
           </div>
         ) : (
-          <div className="preview-pane rounded-md" style={{ flexBasis: "100%" }}>
+          // —— 这里是修复点：让预览链路吃满高度
+          <div
+            className="preview-pane rounded-md"
+            style={{ flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}
+          >
             <div
               ref={previewScrollRef}
               className="preview-scroll custom-scroll"
               style={{
                 flex: "1 1 0",
                 minHeight: 0,
-                maxHeight: "100%",
                 overflowX: "hidden",
                 overflowY: previewCanScroll ? "auto" : "hidden",
                 background: "var(--color-surface)"
@@ -998,7 +981,7 @@ export default function BlockEditorAuto({
     );
   }
 
-  // 桌面端：分屏（两个面板都固定在容器内滚动）
+  // —— 桌面端：分屏
   return (
     <div
       className="h-full flex flex-col overflow-hidden"
@@ -1010,22 +993,14 @@ export default function BlockEditorAuto({
       <div
         ref={splitContainerRef}
         className={`editor-split-root flex-1 min-h-0 flex ${
-          showPreview
-            ? previewMode === "vertical"
-              ? "flex-row"
-              : "flex-col"
-            : "flex-col"
+          showPreview ? (previewMode === "vertical" ? "flex-row" : "flex-col") : "flex-col"
         } overflow-hidden`}
         style={{ height: "100%" }}
       >
         {/* 编辑面板 */}
         <div
           className="editor-pane rounded-md"
-          style={
-            showPreview
-              ? { flexBasis: `${splitRatio * 100}%` }
-              : { flexBasis: "100%" }
-          }
+          style={showPreview ? { flexBasis: `${splitRatio * 100}%` } : { flexBasis: "100%" }}
         >
           <div
             className="editor-scroll custom-scroll"
@@ -1042,11 +1017,7 @@ export default function BlockEditorAuto({
                   {lineNumbers}
                 </pre>
               </div>
-              <div
-                className="editor-text-wrapper"
-                style={{ position: "relative" }}
-              >
-                {/* 高亮覆盖层（仅有搜索词时渲染）；与横/纵向滚动同步 */}
+              <div className="editor-text-wrapper" style={{ position: "relative" }}>
                 {(searchQuery || "").trim() ? (
                   <pre
                     ref={highlightsInnerRef}
@@ -1060,9 +1031,7 @@ export default function BlockEditorAuto({
                       color: "transparent",
                       zIndex: 2
                     }}
-                    dangerouslySetInnerHTML={{
-                      __html: editorHighlightsHtml
-                    }}
+                    dangerouslySetInnerHTML={{ __html: editorHighlightsHtml }}
                   />
                 ) : null}
                 <textarea
@@ -1094,22 +1063,19 @@ export default function BlockEditorAuto({
           </div>
         </div>
 
-        {/* 预览分隔条 + 预览面板 */}
+        {/* 分隔条 + 预览面板 */}
         {showPreview && (
           <>
             <div
-              className={`split-divider ${
-                previewMode === "vertical" ? "split-vertical" : "split-horizontal"
-              } ${draggingDivider ? "dragging" : ""}`}
+              className={`split-divider ${previewMode === "vertical" ? "split-vertical" : "split-horizontal"} ${
+                draggingDivider ? "dragging" : ""
+              }`}
               onMouseDown={startDividerDrag}
               onTouchStart={startDividerDrag}
               onDoubleClick={resetSplit}
               title="拖动调整比例，双击恢复 50%"
             />
-            <div
-              className="preview-pane rounded-md"
-              style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}
-            >
+            <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
               <div
                 ref={previewScrollRef}
                 className="preview-scroll custom-scroll"
@@ -1136,7 +1102,7 @@ export default function BlockEditorAuto({
   );
 }
 
-// —— 工具函数（放在组件文件底部也可）
+// —— 工具函数
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, "&amp;")
