@@ -1,4 +1,5 @@
 // src/components/blocks/BlockEditorAuto.jsx
+// src/components/blocks/BlockEditorAuto.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Undo2, Redo2, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { apiUploadImage } from "../../api/cloudflare.js";
@@ -906,16 +907,26 @@ export default function BlockEditorAuto({
       >
         {TopBar}
         {mobileView === "edit" ? (
-          <div className="editor-pane rounded-md" style={{ flexBasis: "100%" }}>
+          <div
+            className="editor-pane rounded-md"
+            // 关键修复：让编辑面板参与伸缩并拿到剩余高度
+            style={{ flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}
+          >
             <div
               className="editor-scroll custom-scroll"
               ref={editorScrollRef}
-              style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
+              // 关键修复：使内部链路为 flex，高度可传递到 textarea
+              style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", display: "flex", height: "100%" }}
             >
-              <div className="editor-inner">
+              <div
+                className="editor-inner"
+                // 关键修复：内层吃满，便于子元素 100% 高度
+                style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minHeight: 0, height: "100%" }}
+              >
                 <div
                   className="editor-text-wrapper"
-                  style={{ position: "relative" }}
+                  // 关键修复：包裹层也要成为 flex 容器并吃满
+                  style={{ position: "relative", display: "flex", flex: "1 1 0", minHeight: 0, height: "100%" }}
                 >
                   {/* 高亮覆盖层：仅在有搜索词时渲染；文字透明，只显示背景 */}
                   {(searchQuery || "").trim() ? (
@@ -948,9 +959,11 @@ export default function BlockEditorAuto({
                     }}
                     onBlur={onBlur}
                     onKeyDown={handleKeyDown}
+                    // 关键修复：textarea 必须 100% 高，内部滚动才能到底
                     style={{
                       flex: "1 1 0",
                       minHeight: 0,
+                      height: "100%",
                       overflowX: "hidden",
                       overflowY: editorCanScroll ? "auto" : "hidden",
                       whiteSpace: "pre-wrap",
@@ -999,7 +1012,7 @@ export default function BlockEditorAuto({
       className="h-full flex flex-col overflow-hidden"
       onPaste={handlePaste}
       onDrop={handleDrop}
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={(e) => e.preventDefault()}}
     >
       {TopBar}
       <div
