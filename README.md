@@ -45,33 +45,33 @@
 
 ## 目录结构
 
-web-inbox/
-├─ functions/
-│  ├─ [[path]].js            # Pages Functions 路由聚合：/api/*（auth/blocks/images 等）
-│  └─ api/password.js        # 修改密码（独立函数）
-├─ src/
-│  ├─ App.jsx                # Provider 组合 + 路由
-│  ├─ main.jsx               # 入口
-│  ├─ index.css              # 主题变量/滚动条/编辑器样式
-│  ├─ context/
-│  │  ├─ AuthContext.jsx
-│  │  └─ ThemeContext.jsx
-│  ├─ hooks/
-│  │  └─ useToast.jsx
-│  ├─ lib/
-│  │  └─ apiClient.js        # apiFetch（同源 /api，带凭据）
-│  ├─ api/
-│  │  └─ cloudflare.js       # 前端 API 包装（blocks/images/auth 等）
-│  ├─ components/
-│  │  ├─ layout/
-│  │  │  ├─ Layout.jsx
-│  │  │  ├─ Navbar.jsx
-│  │  │  └─ Sidebar.jsx
-│  │  ├─ account/ChangePasswordModal.jsx
-│  │  └─ blocks/BlockEditorAuto.jsx
-│  └─ pages/
-│     ├─ AuthPage.jsx
-│     └─ InboxPage.jsx
+    web-inbox/
+    ├─ functions/
+    │  ├─ [[path]].js            # Pages Functions 路由聚合：/api/*（auth/blocks/images 等）
+    │  └─ api/password.js        # 修改密码（独立函数）
+    ├─ src/
+    │  ├─ App.jsx                # Provider 组合 + 路由
+    │  ├─ main.jsx               # 入口
+    │  ├─ index.css              # 主题变量/滚动条/编辑器样式
+    │  ├─ context/
+    │  │  ├─ AuthContext.jsx
+    │  │  └─ ThemeContext.jsx
+    │  ├─ hooks/
+    │  │  └─ useToast.jsx
+    │  ├─ lib/
+    │  │  └─ apiClient.js        # apiFetch（同源 /api，带凭据）
+    │  ├─ api/
+    │  │  └─ cloudflare.js       # 前端 API 包装（blocks/images/auth 等）
+    │  ├─ components/
+    │  │  ├─ layout/
+    │  │  │  ├─ Layout.jsx
+    │  │  │  ├─ Navbar.jsx
+    │  │  │  └─ Sidebar.jsx
+    │  │  ├─ account/ChangePasswordModal.jsx
+    │  │  └─ blocks/BlockEditorAuto.jsx
+    │  └─ pages/
+    │     ├─ AuthPage.jsx
+    │     └─ InboxPage.jsx
 
 ---
 
