@@ -47,7 +47,7 @@ export default function AuthPage() {
         <div className="text-center space-y-2">
           <h1 className="mx-auto h-24 justify-center">
             <img
-              src="https://img.811777.xyz/i/2025/10/04/68e11e37023d2.png"
+              src="https://img.811777.xyz/i/2025/10/04/68e1208465670.png"
               alt="笔记 bji.cc"
               className="h-full object-contain w-auto mx-auto"
             />
