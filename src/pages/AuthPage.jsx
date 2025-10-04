@@ -47,13 +47,13 @@ export default function AuthPage() {
         <div className="text-center space-y-2">
           <h1 className="mx-auto h-24 justify-center">
             <img
-              src="https://img.686656.xyz/images/i/2025/09/21/webtipslogo.png"
-              alt="Web Tips"
+              src="https://img.811777.xyz/i/2025/10/04/68e11e37023d2.png"
+              alt="笔记 bji.cc"
               className="h-full object-contain w-auto mx-auto"
             />
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
-            {mode === "login" ? "登录到你的WEB TIPS" : "创建你的账号（需要邀请码）"}
+            {mode === "login" ? "登录到你的笔记 bji.cc" : "创建你的账号（需要邀请码）"}
           </p>
         </div>
 
