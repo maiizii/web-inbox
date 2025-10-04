@@ -37,7 +37,7 @@ export default function Layout({ children, fullScreen = false }) {
           borderColor: "var(--color-border)",
         }}
       >
-        Web Tips · Powered by Cloudflare Pages + D1 + KV
+        © 2025 bji.cc · Powered by Cloudflare Pages + D1 + KV
       </footer>
     </div>
   );
