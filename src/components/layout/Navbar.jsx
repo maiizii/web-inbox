@@ -32,7 +32,7 @@ export default function Navbar() {
       >
         <div className="w-full px-4 md:px-6 h-14 flex items-center gap-4">
           <img
-            src="https://img.811777.xyz/i/2025/10/04/68e11e37023d2.png"
+            src="https://img.811777.xyz/i/2025/10/04/68e1208465670.png"
             alt="笔记 bji.cc"
             className="h-full w-auto select-none object-contain"
           />
