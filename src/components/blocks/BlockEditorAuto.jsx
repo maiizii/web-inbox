@@ -439,9 +439,11 @@ export default function BlockEditorAuto({
     overflowCheckTimerRef.current = requestAnimationFrame(() => {
       const ta = textareaRef.current;
       if (ta) {
-        const can = ta.scrollHeight > ta.clientHeight + 1 || ta.scrollWidth > ta.clientWidth + 1;
+        const hasVerticalOverflow = ta.scrollHeight > ta.clientHeight + 1;
+        const hasHorizontalOverflow = ta.scrollWidth > ta.clientWidth + 1;
+        const can = hasVerticalOverflow || hasHorizontalOverflow;
         setEditorCanScroll(can);
-        ta.classList.toggle("no-v-scroll", !(ta.scrollHeight > ta.clientHeight + 1));
+        ta.classList.toggle("no-v-scroll", !can);
       }
       const pv = previewScrollRef.current;
       if (pv) {
@@ -806,9 +808,9 @@ export default function BlockEditorAuto({
               type="button"
               onClick={() => setWrapEnabled((v) => !v)}
               className="btn-outline-modern !p-2"
-              title="切换自动换行"
+              title="切换换行"
             >
-              {wrapEnabled ? "自动换行:开" : "自动换行:关"}
+              {wrapEnabled ? "换行:开" : "换行:关"}
             </button>
             {mobileView === "edit" ? (
               <button
@@ -854,9 +856,9 @@ export default function BlockEditorAuto({
               type="button"
               onClick={() => setWrapEnabled((v) => !v)}
               className="btn-outline-modern !px-2.5 !py-1.5"
-              title="自动换行开/关"
+              title="换行开/关"
             >
-              {wrapEnabled ? "自动换行:开" : "自动换行:关"}
+              {wrapEnabled ? "换行:开" : "换行:关"}
             </button>
             {showPreview && (
               <>
