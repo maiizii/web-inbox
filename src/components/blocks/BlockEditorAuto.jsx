@@ -84,6 +84,12 @@ export default function BlockEditorAuto({
   const [lineNumbers, setLineNumbers] = useState("1");
   const [previewHtml, setPreviewHtml] = useState("");
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
+  const [wrapEnabled, setWrapEnabled] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem("editorWrapEnabled");
+    if (stored === null) return true;
+    return stored === "1";
+  });
 
   // 按需滚动
   const [editorCanScroll, setEditorCanScroll] = useState(false);
@@ -227,8 +233,8 @@ export default function BlockEditorAuto({
     div.style.position = "absolute";
     div.style.visibility = "hidden";
     div.style.pointerEvents = "none";
-    div.style.whiteSpace = "pre-wrap";
-    div.style.wordBreak = "break-word";
+    div.style.whiteSpace = wrapEnabled ? "pre-wrap" : "pre";
+    div.style.wordBreak = wrapEnabled ? "break-word" : "normal";
     div.style.left = "-9999px";
     div.style.top = "-9999px";
     document.body.appendChild(div);
@@ -248,6 +254,8 @@ export default function BlockEditorAuto({
     m.style.letterSpacing = cs.letterSpacing;
     m.style.tabSize = cs.tabSize || "2";
     m.style.padding = "0px";
+    m.style.whiteSpace = wrapEnabled ? "pre-wrap" : "pre";
+    m.style.wordBreak = wrapEnabled ? "break-word" : "normal";
   }
   function computeRowsForLine(line) {
     const m = mirrorRef.current;
@@ -263,7 +271,7 @@ export default function BlockEditorAuto({
       setLineNumbers("1");
       return;
     }
-    const isSoftWrap = isMobile || ta.getAttribute("wrap") === "soft";
+    const isSoftWrap = (ta.getAttribute("wrap") || "soft") !== "off";
     if (!txt) {
       setLineNumbers("1");
       return;
@@ -394,8 +402,8 @@ export default function BlockEditorAuto({
     hi.style.lineHeight = cs.lineHeight;
     hi.style.letterSpacing = cs.letterSpacing;
     hi.style.tabSize = cs.tabSize || "2";
-    hi.style.whiteSpace = isMobile ? "pre-wrap" : "pre";
-    hi.style.wordBreak = isMobile ? "break-word" : "normal";
+    hi.style.whiteSpace = wrapEnabled ? "pre-wrap" : "pre";
+    hi.style.wordBreak = wrapEnabled ? "break-word" : "normal";
   }
 
   useEffect(() => {
@@ -409,7 +417,7 @@ export default function BlockEditorAuto({
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [content, isMobile]);
+  }, [content, isMobile, wrapEnabled]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -445,7 +453,30 @@ export default function BlockEditorAuto({
   }
   useEffect(() => {
     detectOverflow();
-  }, [content, showPreview, previewMode, splitRatio, isMobile, mobileView, searchQuery]);
+  }, [
+    content,
+    showPreview,
+    previewMode,
+    splitRatio,
+    isMobile,
+    mobileView,
+    searchQuery,
+    wrapEnabled
+  ]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("editorWrapEnabled", wrapEnabled ? "1" : "0");
+    }
+    updateLineNumsWrapped(content);
+    detectOverflow();
+    syncHighlightsMetrics();
+    const mirror = mirrorRef.current;
+    if (mirror) {
+      mirror.style.whiteSpace = wrapEnabled ? "pre-wrap" : "pre";
+      mirror.style.wordBreak = wrapEnabled ? "break-word" : "normal";
+    }
+  }, [wrapEnabled]);
 
   // 图片上传
   async function persistAfterImage(newContent) {
@@ -771,6 +802,14 @@ export default function BlockEditorAuto({
             >
               <Redo2 size={16} />
             </button>
+            <button
+              type="button"
+              onClick={() => setWrapEnabled((v) => !v)}
+              className="btn-outline-modern !p-2"
+              title="切换自动换行"
+            >
+              {wrapEnabled ? "自动换行:开" : "自动换行:关"}
+            </button>
             {mobileView === "edit" ? (
               <button
                 type="button"
@@ -810,6 +849,14 @@ export default function BlockEditorAuto({
               title="重做 (Ctrl+Y)"
             >
               <Redo2 size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setWrapEnabled((v) => !v)}
+              className="btn-outline-modern !px-2.5 !py-1.5"
+              title="自动换行开/关"
+            >
+              {wrapEnabled ? "自动换行:开" : "自动换行:关"}
             </button>
             {showPreview && (
               <>
@@ -927,7 +974,7 @@ export default function BlockEditorAuto({
                     value={content}
                     disabled={disabledByCreation}
                     placeholder="输入文本 (可粘贴图片)"
-                    wrap="soft"
+                    wrap={wrapEnabled ? "soft" : "off"}
                     onChange={(e) => {
                       handleContentChange(e.target.value);
                     }}
@@ -937,10 +984,10 @@ export default function BlockEditorAuto({
                       flex: "1 1 0",
                       minHeight: 0,
                       height: "100%",
-                      overflowX: "hidden",
+                      overflowX: wrapEnabled ? "hidden" : "auto",
                       overflowY: editorCanScroll ? "auto" : "hidden",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
+                      whiteSpace: wrapEnabled ? "pre-wrap" : "pre",
+                      wordBreak: wrapEnabled ? "break-word" : "normal",
                       background: "var(--color-surface)",
                       color: "var(--color-text)",
                       paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)",
@@ -1040,7 +1087,7 @@ export default function BlockEditorAuto({
                   value={content}
                   disabled={disabledByCreation}
                   placeholder="输入文本 (粘贴/拖拽图片, Tab/Shift+Tab, Ctrl+Z / Ctrl+Y)"
-                  wrap="off"
+                  wrap={wrapEnabled ? "soft" : "off"}
                   onChange={(e) => {
                     handleContentChange(e.target.value);
                   }}
@@ -1049,8 +1096,10 @@ export default function BlockEditorAuto({
                   style={{
                     flex: "1 1 0",
                     minHeight: 0,
-                    overflowX: "auto",
+                    overflowX: wrapEnabled ? "hidden" : "auto",
                     overflowY: editorCanScroll ? "auto" : "hidden",
+                    whiteSpace: wrapEnabled ? "pre-wrap" : "pre",
+                    wordBreak: wrapEnabled ? "break-word" : "normal",
                     background: "var(--color-surface)",
                     color: "var(--color-text)",
                     position: "relative",
