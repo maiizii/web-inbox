@@ -122,6 +122,7 @@ export default function InboxPage() {
     const optimistic = {
       id: "tmp-" + Date.now(),
       content: "",
+      format: "text",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       position: (blocks[blocks.length - 1]?.position || blocks.length) + 1,
@@ -130,7 +131,7 @@ export default function InboxPage() {
     setBlocks(prev => [optimistic, ...prev]);
     setSelectedId(optimistic.id);
     try {
-      const real = await apiCreateBlock("");
+      const real = await apiCreateBlock("", "text");
       setBlocks(prev =>
         prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
       );

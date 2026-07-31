@@ -37,8 +37,20 @@ test("inserts rich block templates", () => {
   assert.match(mermaid.content, /flowchart LR/);
 
   const details = applyMarkdownCommand("body", 0, 4, "details");
-  assert.equal(details.content, "::: details 详情\nbody\n:::\n");
+  assert.equal(details.content, "::: details [点击展开]\nbody\n:::\n");
 
   const frontMatter = applyMarkdownCommand("# Note", 0, 0, "frontMatter");
   assert.match(frontMatter.content, /^---\ntitle: \ntags: \[\]\n---/);
+});
+
+test("supports the complete Inkstone toolbar command set", () => {
+  assert.equal(applyMarkdownCommand("text", 0, 4, "inserted").content, "++text++");
+  assert.equal(applyMarkdownCommand("2", 0, 1, "subscript").content, "~2~");
+  assert.equal(applyMarkdownCommand("2", 0, 1, "superscript").content, "^2^");
+  assert.equal(applyMarkdownCommand("Note", 0, 4, "wikiLink").content, "[[Note]]");
+  assert.equal(applyMarkdownCommand("Note", 0, 4, "noteEmbed").content, "![[Note]]");
+  assert.match(applyMarkdownCommand("", 0, 0, "advancedCode").content, /line-numbers/);
+  assert.match(applyMarkdownCommand("", 0, 0, "tabs").content, /^::: tabs/);
+  assert.equal(applyMarkdownCommand("label", 0, 5, "pandocAttributes").content, "[label]{#id .class}");
+  assert.match(applyMarkdownCommand("", 0, 0, "math").content, /^\$\$/);
 });

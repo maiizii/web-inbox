@@ -9,6 +9,7 @@
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 const SESSION_COOKIE = "sid";
+let blockFormatSchemaPromise = null;
 
 function json(obj, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(obj), {
@@ -188,6 +189,32 @@ async function logout(request, env) {
 }
 
 /* ================= Blocks ================= */
+async function ensureBlockFormatColumn(env) {
+  if (!blockFormatSchemaPromise) {
+    blockFormatSchemaPromise = (async () => {
+      const info = await env.DB.prepare("PRAGMA table_info(blocks)").all();
+      const hasFormat = (info.results || []).some(row => row.name === "format");
+      if (!hasFormat) {
+        try {
+          await env.DB.prepare(
+            "ALTER TABLE blocks ADD COLUMN format TEXT NOT NULL DEFAULT 'text'"
+          ).run();
+        } catch (error) {
+          if (!/duplicate column/i.test(String(error?.message || error))) throw error;
+        }
+      }
+    })().catch(error => {
+      blockFormatSchemaPromise = null;
+      throw error;
+    });
+  }
+  return blockFormatSchemaPromise;
+}
+
+function normalizeBlockFormat(value) {
+  return value === "markdown" ? "markdown" : "text";
+}
+
 /**
  * Ordering rule:
  *  1) position ASC (manual priority)
@@ -195,8 +222,9 @@ async function logout(request, env) {
  *  3) created_at DESC (recently created)
  */
 async function listBlocks(env, userId) {
+  await ensureBlockFormatColumn(env);
   const rs = await env.DB.prepare(
-    `SELECT id, content, created_at, updated_at, position
+    `SELECT id, content, format, created_at, updated_at, position
      FROM blocks
      WHERE user_id = ?
      ORDER BY position ASC,
@@ -207,6 +235,7 @@ async function listBlocks(env, userId) {
 }
 
 async function createBlock(request, env, userId) {
+  await ensureBlockFormatColumn(env);
   const body = await parseJson(request);
   if (!body || !Object.prototype.hasOwnProperty.call(body, "content")) {
     throw new HttpError(400, "缺少 content");
@@ -214,6 +243,7 @@ async function createBlock(request, env, userId) {
   let content = body.content;
   if (content == null) content = "";
   if (typeof content !== "string") content = String(content);
+  const format = normalizeBlockFormat(body.format);
 
   const row = await env.DB.prepare(
     "SELECT MAX(position) AS m FROM blocks WHERE user_id = ?"
@@ -223,13 +253,14 @@ async function createBlock(request, env, userId) {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await env.DB.prepare(
-    "INSERT INTO blocks (id, user_id, content, created_at, updated_at, position) VALUES (?, ?, ?, ?, ?, ?)"
-  ).bind(id, userId, content, now, now, nextPos).run();
+    "INSERT INTO blocks (id, user_id, content, format, created_at, updated_at, position) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, userId, content, format, now, now, nextPos).run();
 
-  return json({ block: { id, content, created_at: now, updated_at: now, position: nextPos } }, 201);
+  return json({ block: { id, content, format, created_at: now, updated_at: now, position: nextPos } }, 201);
 }
 
 async function updateBlock(request, env, userId, blockId) {
+  await ensureBlockFormatColumn(env);
   const body = await parseJson(request);
   if (!body || !Object.prototype.hasOwnProperty.call(body, "content")) {
     throw new HttpError(400, "缺少 content");
@@ -239,18 +270,22 @@ async function updateBlock(request, env, userId, blockId) {
   if (typeof content !== "string") content = String(content);
 
   const owned = await env.DB.prepare(
-    "SELECT id, created_at, position FROM blocks WHERE id = ? AND user_id = ?"
+    "SELECT id, format, created_at, position FROM blocks WHERE id = ? AND user_id = ?"
   ).bind(blockId, userId).first();
   if (!owned) throw new HttpError(404, "不存在或无权限");
   const now = new Date().toISOString();
+  const format = Object.prototype.hasOwnProperty.call(body, "format")
+    ? normalizeBlockFormat(body.format)
+    : normalizeBlockFormat(owned.format);
   await env.DB.prepare(
-    "UPDATE blocks SET content = ?, updated_at = ? WHERE id = ?"
-  ).bind(content, now, blockId).run();
+    "UPDATE blocks SET content = ?, format = ?, updated_at = ? WHERE id = ?"
+  ).bind(content, format, now, blockId).run();
 
   return json({
     block: {
       id: blockId,
       content,
+      format,
       created_at: owned.created_at,
       updated_at: now,
       position: owned.position

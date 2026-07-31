@@ -165,7 +165,13 @@ export function applyMarkdownCommand(source, start, end, command, option) {
   if (command === "strike") return toggleWrap(text, from, to, "~~", "~~", "删除线文字");
   if (command === "inlineCode") return toggleWrap(text, from, to, "`", "`", "代码");
   if (command === "highlight") return toggleWrap(text, from, to, "==", "==", "高亮文字");
-  if (command === "math") return toggleWrap(text, from, to, "$", "$", "E = mc^2");
+  if (command === "inserted") return toggleWrap(text, from, to, "++", "++", "插入文本");
+  if (command === "subscript") return toggleWrap(text, from, to, "~", "~", "2");
+  if (command === "superscript") return toggleWrap(text, from, to, "^", "^", "2");
+  if (command === "inlineMath") return toggleWrap(text, from, to, "$", "$", "E = mc^2");
+  if (command === "wikiLink") return toggleWrap(text, from, to, "[[", "]]", "笔记标题");
+  if (command === "noteEmbed") return toggleWrap(text, from, to, "![[", "]]", "笔记标题");
+  if (command === "blockReference") return toggleWrap(text, from, to, "((", "))", "block-id");
 
   if (["heading", "bullet", "ordered", "task", "quote"].includes(command)) {
     return toggleLineStyle(text, from, to, command, option);
@@ -179,10 +185,35 @@ export function applyMarkdownCommand(source, start, end, command, option) {
     return insertTemplate(text, from, to, template, label.length + 3, url.length);
   }
 
+  if (command === "remoteImage") {
+    const alt = selected || "图片描述";
+    const url = "https://";
+    const template = `![${alt}](${url})`;
+    return insertTemplate(text, from, to, template, alt.length + 4, url.length);
+  }
+
+  if (command === "tag") {
+    const value = selected || "标签";
+    return insertTemplate(text, from, to, `#${value}`, 1, value.length);
+  }
+
+  if (command === "blockId") {
+    const prefix = from > 0 && !/\s/.test(text[from - 1]) ? " " : "";
+    const value = selected || "block-id";
+    return insertTemplate(text, from, to, `${prefix}^${value}`, prefix.length + 1, value.length);
+  }
+
   if (command === "codeBlock") {
     const value = selected || "code";
     const template = `\`\`\`\n${value}\n\`\`\`\n`;
     return insertTemplate(text, from, to, template, 4, value.length);
+  }
+
+  if (command === "advancedCode") {
+    const value = selected || "code";
+    const info = 'text title="" line-numbers {1}';
+    const template = `\`\`\`${info}\n${value}\n\`\`\`\n`;
+    return insertTemplate(text, from, to, template, 3, info.length);
   }
 
   if (command === "definition") {
@@ -206,8 +237,25 @@ export function applyMarkdownCommand(source, start, end, command, option) {
 
   if (command === "details") {
     const value = selected || "折叠内容";
-    const template = `::: details 详情\n${value}\n:::\n`;
-    return insertTemplate(text, from, to, template, 15, 2);
+    const title = "点击展开";
+    const template = `::: details [${title}]\n${value}\n:::\n`;
+    return insertTemplate(text, from, to, template, 13, title.length);
+  }
+
+  if (command === "tabs") {
+    const value = selected || "第一个标签页的内容。";
+    const template = `::: tabs\n@tab 第一个标签\n${value}\n\n@tab 第二个标签\n\n:::\n`;
+    const position = template.indexOf("第一个标签");
+    return insertTemplate(text, from, to, template, position, "第一个标签".length);
+  }
+
+  if (command === "pandocAttributes") {
+    if (selected) {
+      const template = `[${selected}]{#id .class}`;
+      return insertTemplate(text, from, to, template, selected.length + 3, 2);
+    }
+    const template = " {#id .class}";
+    return insertTemplate(text, from, to, template, 3, 2);
   }
 
   if (command === "footnote") {
@@ -242,6 +290,12 @@ export function applyMarkdownCommand(source, start, end, command, option) {
   if (command === "table") {
     const template = "| 列 1 | 列 2 | 列 3 |\n| --- | --- | --- |\n|  |  |  |\n";
     return insertTemplate(text, from, to, template, 2, 3);
+  }
+
+  if (command === "math") {
+    const value = selected || "a^2 + b^2 = c^2";
+    const template = `$$\n${value}\n$$\n`;
+    return insertTemplate(text, from, to, template, 3, value.length);
   }
 
   if (command === "divider") {

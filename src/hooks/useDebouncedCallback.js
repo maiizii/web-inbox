@@ -6,35 +6,43 @@ import { useRef, useCallback, useEffect } from "react";
  */
 export function useDebouncedCallback(fn, delay) {
   const timer = useRef(null);
-  const lastArgs = useRef(null);
+  const pending = useRef(null);
+  const latestFn = useRef(fn);
+  latestFn.current = fn;
 
-  const clear = () => {
+  const clear = useCallback(() => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
-  };
+    pending.current = null;
+  }, []);
 
   const debounced = useCallback(
     (...args) => {
-      lastArgs.current = args;
       clear();
+      pending.current = { fn: latestFn.current, args };
       timer.current = setTimeout(() => {
         timer.current = null;
-        fn(...lastArgs.current);
+        const call = pending.current;
+        pending.current = null;
+        call?.fn(...call.args);
       }, delay);
     },
-    [fn, delay]
+    [clear, delay]
   );
 
   const flush = useCallback(() => {
     if (timer.current) {
-      clear();
-      if (lastArgs.current) fn(...lastArgs.current);
+      clearTimeout(timer.current);
+      timer.current = null;
+      const call = pending.current;
+      pending.current = null;
+      call?.fn(...call.args);
     }
-  }, [fn]);
+  }, []);
 
-  useEffect(() => clear, []);
+  useEffect(() => clear, [clear]);
 
   return [debounced, flush, clear];
 }

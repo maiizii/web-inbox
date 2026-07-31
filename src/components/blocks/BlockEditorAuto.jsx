@@ -89,7 +89,7 @@ export default function BlockEditorAuto({
   const [previewHeadings, setPreviewHeadings] = useState([]);
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
   const [editorMode, setEditorMode] = useState(() =>
-    localStorage.getItem("editorContentMode") === "markdown" ? "markdown" : "text"
+    block?.format === "markdown" ? "markdown" : "text"
   );
   const [wrapEnabled, setWrapEnabled] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -120,7 +120,7 @@ export default function BlockEditorAuto({
   const mirrorRef = useRef(null);
 
   // 关键状态
-  const lastPersisted = useRef({ content: "" });
+  const lastPersisted = useRef({ content: "", format: "text" });
   const hasUserEditedRef = useRef(false);
   const currentBlockIdRef = useRef(block?.id || null);
   const dividerDragRef = useRef(null);
@@ -130,7 +130,9 @@ export default function BlockEditorAuto({
   const isSyncingScrollRef = useRef(false);
   const overflowCheckTimerRef = useRef(null);
 
-  const dirty = !!block && content !== lastPersisted.current.content;
+  const dirty = !!block && (
+    content !== lastPersisted.current.content || editorMode !== lastPersisted.current.format
+  );
   const derivedTitle =
     (block?.content || "").split("\n")[0].slice(0, 64) || "(空)";
   const hist = historyStoreRef.current.get(block?.id) || null;
@@ -327,12 +329,14 @@ export default function BlockEditorAuto({
   useEffect(() => {
     currentBlockIdRef.current = block?.id || null;
     const init = block?.content || "";
-    lastPersisted.current = { content: init };
+    const initFormat = block?.format === "markdown" ? "markdown" : "text";
+    lastPersisted.current = { content: init, format: initFormat };
     hasUserEditedRef.current = false;
     setContent(init);
+    setEditorMode(initFormat);
     ensureHistory(block?.id, init);
     updateLineNumsWrapped(init);
-    updatePreview(init, searchQuery);
+    updatePreview(init, searchQuery, initFormat);
     setSaving(false);
     setError("");
     setEditorHighlightsHtml(makeHighlightsFromRaw(init, (searchQuery || "").trim()));
@@ -357,7 +361,6 @@ export default function BlockEditorAuto({
   }, [content, searchQuery, editorMode]);
 
   useEffect(() => {
-    localStorage.setItem("editorContentMode", editorMode);
     requestAnimationFrame(detectOverflow);
   }, [editorMode]);
 
@@ -381,9 +384,9 @@ export default function BlockEditorAuto({
     const saveId = block.id;
     setSaving(true);
     setError("");
-    const payload = { content };
+    const payload = { content, format: editorMode };
     try {
-      onChange && onChange(block.id, { content });
+      onChange && onChange(block.id, payload);
       let real;
       try {
         real = await onImmediateSave(block.id, payload);
@@ -393,7 +396,7 @@ export default function BlockEditorAuto({
         else throw err;
       }
       if (currentBlockIdRef.current === saveId) {
-        lastPersisted.current = { content };
+        lastPersisted.current = payload;
       }
     } catch (err) {
       if (currentBlockIdRef.current === saveId)
@@ -403,9 +406,10 @@ export default function BlockEditorAuto({
     }
   }
   const [debouncedSave, flushSave] = useDebouncedCallback(doSave, 800);
+  useEffect(() => () => flushSave(), [block?.id, flushSave]);
   useEffect(() => {
     if (dirty) debouncedSave();
-  }, [content, debouncedSave, dirty]);
+  }, [content, editorMode, debouncedSave, dirty]);
   function onBlur() {
     flushSave();
   }
@@ -514,8 +518,8 @@ export default function BlockEditorAuto({
   async function persistAfterImage(newContent) {
     if (!block || block.optimistic) return;
     try {
-      onChange && onChange(block.id, { content: newContent });
-      const payload = { content: newContent };
+      onChange && onChange(block.id, { content: newContent, format: editorMode });
+      const payload = { content: newContent, format: editorMode };
       let real;
       try {
         real = await onImmediateSave(block.id, payload);
@@ -524,7 +528,7 @@ export default function BlockEditorAuto({
           real = await safeUpdateFallback(block.id, payload, e);
         else throw e;
       }
-      lastPersisted.current = { content: newContent };
+      lastPersisted.current = { content: newContent, format: editorMode };
       pushHistory(newContent, true);
     } catch (e) {
       toast.push(e.message || "图片保存失败", { type: "error" });
@@ -800,14 +804,39 @@ export default function BlockEditorAuto({
 
   function handleMarkdownShortcut(e) {
     if (editorMode !== "markdown" || (!e.ctrlKey && !e.metaKey)) return;
-    const command = {
+    const key = e.key.toLowerCase();
+    let command = {
       b: "bold",
       i: "italic",
       e: "inlineCode"
-    }[e.key.toLowerCase()];
+    }[key];
+    if (e.shiftKey && key === "x") command = "strike";
+    if (e.shiftKey && key === "h") command = "highlight";
+    if (!e.shiftKey && /^[1-6]$/.test(key)) {
+      e.preventDefault();
+      applyMarkdownFormat("heading", Number(key));
+      return;
+    }
     if (!command) return;
     e.preventDefault();
     applyMarkdownFormat(command);
+  }
+
+  function handleMarkdownTaskToggle(line, checked) {
+    if (editorMode !== "markdown") return;
+    const lines = content.split("\n");
+    if (!lines[line] || !/^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX](\])/.test(lines[line])) return;
+    lines[line] = lines[line].replace(
+      /^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX](\])/,
+      `$1${checked ? "x" : " "}$2`
+    );
+    handleContentChange(lines.join("\n"));
+  }
+
+  function handleEditorModeChange(nextMode) {
+    if (!block || block.optimistic || nextMode === editorMode) return;
+    hasUserEditedRef.current = true;
+    setEditorMode(nextMode);
   }
 
   // 顶部工具条
@@ -843,7 +872,7 @@ export default function BlockEditorAuto({
           <button
             type="button"
             className={editorMode === "text" ? "active" : ""}
-            onClick={() => setEditorMode("text")}
+            onClick={() => handleEditorModeChange("text")}
             title="纯文本模式"
           >
             <FileText size={14} />
@@ -852,7 +881,7 @@ export default function BlockEditorAuto({
           <button
             type="button"
             className={editorMode === "markdown" ? "active" : ""}
-            onClick={() => setEditorMode("markdown")}
+            onClick={() => handleEditorModeChange("markdown")}
             title="Markdown 模式"
           >
             <FileCode2 size={14} />
@@ -1113,6 +1142,7 @@ export default function BlockEditorAuto({
                 headings={previewHeadings}
                 scrollerRef={previewScrollRef}
                 canScroll={previewCanScroll}
+                onTaskToggle={handleMarkdownTaskToggle}
                 mobile
               />
             ) : (
@@ -1243,6 +1273,7 @@ export default function BlockEditorAuto({
                   headings={previewHeadings}
                   scrollerRef={previewScrollRef}
                   canScroll={previewCanScroll}
+                  onTaskToggle={handleMarkdownTaskToggle}
                 />
               ) : (
                 <div

@@ -43,21 +43,24 @@ export async function apiListBlocks() {
   const raw = await apiFetch("/api/blocks");
   return normList(raw);
 }
-export async function apiCreateBlock(content = "") {
+export async function apiCreateBlock(content = "", format = "text") {
   const raw = await apiFetch("/api/blocks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content })
+    body: JSON.stringify({ content, format })
   });
   const b = normBlock(raw);
   if (!b) throw new Error("创建失败");
   return b;
 }
-export async function apiUpdateBlock(id, { content }) {
+export async function apiUpdateBlock(id, { content, format }) {
   const raw = await apiFetch(`/api/blocks/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: content ?? "" })
+    body: JSON.stringify({
+      content: content ?? "",
+      ...(format === undefined ? {} : { format: format === "markdown" ? "markdown" : "text" })
+    })
   });
   const b = normBlock(raw);
   if (!b) throw new Error("更新失败");
