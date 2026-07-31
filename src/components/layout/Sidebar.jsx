@@ -1,6 +1,6 @@
 // src/components/layout/Sidebar.jsx
 import React, { useMemo } from "react";
-import { Plus, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, ChevronUp, ChevronDown, Star } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext.jsx";
 
 export default function Sidebar({
@@ -107,6 +107,7 @@ export default function Sidebar({
           const firstLine = (b.content || "").split("\n")[0] || "(空)";
           const derivedTitle = firstLine.slice(0, 64) || "(空)";
           const isSel = b.id === selectedId;
+          const isStarred = b.starred === true || b.starred === 1;
           const isDragging = b.id === draggingId;
           const lastEdit = (b.updated_at || b.created_at || "")
             .replace("T", " ")
@@ -157,6 +158,15 @@ export default function Sidebar({
                     最后编辑：{lastEdit}
                   </div>
                 </div>
+
+                {isStarred ? (
+                  <Star
+                    size={15}
+                    className={isSel ? "text-amber-200" : "text-amber-500"}
+                    fill="currentColor"
+                    aria-label="已收藏"
+                  />
+                ) : null}
 
                 {/* 移动端上/下移 */}
                 {isMobile && (onMoveUp || onMoveDown) && (

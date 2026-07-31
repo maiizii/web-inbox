@@ -9,7 +9,7 @@
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 const SESSION_COOKIE = "sid";
-let blockFormatSchemaPromise = null;
+let blockSchemaPromise = null;
 
 function json(obj, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(obj), {
@@ -119,6 +119,11 @@ async function route(request, env) {
     requireAuth(user);
     return reorderBlocks(request, env, user.id);
   }
+  const blockStarredMatch = pathname.match(/^\/api\/blocks\/([^/]+)\/starred$/);
+  if (blockStarredMatch && method === "PATCH") {
+    requireAuth(user);
+    return updateBlockStarred(request, env, user.id, blockStarredMatch[1]);
+  }
   const blockMatch = pathname.match(/^\/api\/blocks\/([^/]+)$/);
   if (blockMatch) {
     requireAuth(user);
@@ -189,26 +194,29 @@ async function logout(request, env) {
 }
 
 /* ================= Blocks ================= */
-async function ensureBlockFormatColumn(env) {
-  if (!blockFormatSchemaPromise) {
-    blockFormatSchemaPromise = (async () => {
+async function ensureBlockSchema(env) {
+  if (!blockSchemaPromise) {
+    blockSchemaPromise = (async () => {
       const info = await env.DB.prepare("PRAGMA table_info(blocks)").all();
-      const hasFormat = (info.results || []).some(row => row.name === "format");
-      if (!hasFormat) {
+      const columns = new Set((info.results || []).map(row => row.name));
+      const additions = [
+        ["format", "ALTER TABLE blocks ADD COLUMN format TEXT NOT NULL DEFAULT 'text'"],
+        ["starred", "ALTER TABLE blocks ADD COLUMN starred INTEGER NOT NULL DEFAULT 0"]
+      ];
+      for (const [column, sql] of additions) {
+        if (columns.has(column)) continue;
         try {
-          await env.DB.prepare(
-            "ALTER TABLE blocks ADD COLUMN format TEXT NOT NULL DEFAULT 'text'"
-          ).run();
+          await env.DB.prepare(sql).run();
         } catch (error) {
           if (!/duplicate column/i.test(String(error?.message || error))) throw error;
         }
       }
     })().catch(error => {
-      blockFormatSchemaPromise = null;
+      blockSchemaPromise = null;
       throw error;
     });
   }
-  return blockFormatSchemaPromise;
+  return blockSchemaPromise;
 }
 
 function normalizeBlockFormat(value) {
@@ -222,9 +230,9 @@ function normalizeBlockFormat(value) {
  *  3) created_at DESC (recently created)
  */
 async function listBlocks(env, userId) {
-  await ensureBlockFormatColumn(env);
+  await ensureBlockSchema(env);
   const rs = await env.DB.prepare(
-    `SELECT id, content, format, created_at, updated_at, position
+    `SELECT id, content, format, starred, created_at, updated_at, position
      FROM blocks
      WHERE user_id = ?
      ORDER BY position ASC,
@@ -235,7 +243,7 @@ async function listBlocks(env, userId) {
 }
 
 async function createBlock(request, env, userId) {
-  await ensureBlockFormatColumn(env);
+  await ensureBlockSchema(env);
   const body = await parseJson(request);
   if (!body || !Object.prototype.hasOwnProperty.call(body, "content")) {
     throw new HttpError(400, "缺少 content");
@@ -244,6 +252,7 @@ async function createBlock(request, env, userId) {
   if (content == null) content = "";
   if (typeof content !== "string") content = String(content);
   const format = normalizeBlockFormat(body.format);
+  const starred = body.starred === true || body.starred === 1 ? 1 : 0;
 
   const row = await env.DB.prepare(
     "SELECT MAX(position) AS m FROM blocks WHERE user_id = ?"
@@ -253,14 +262,14 @@ async function createBlock(request, env, userId) {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await env.DB.prepare(
-    "INSERT INTO blocks (id, user_id, content, format, created_at, updated_at, position) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).bind(id, userId, content, format, now, now, nextPos).run();
+    "INSERT INTO blocks (id, user_id, content, format, starred, created_at, updated_at, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, userId, content, format, starred, now, now, nextPos).run();
 
-  return json({ block: { id, content, format, created_at: now, updated_at: now, position: nextPos } }, 201);
+  return json({ block: { id, content, format, starred, created_at: now, updated_at: now, position: nextPos } }, 201);
 }
 
 async function updateBlock(request, env, userId, blockId) {
-  await ensureBlockFormatColumn(env);
+  await ensureBlockSchema(env);
   const body = await parseJson(request);
   if (!body || !Object.prototype.hasOwnProperty.call(body, "content")) {
     throw new HttpError(400, "缺少 content");
@@ -291,6 +300,23 @@ async function updateBlock(request, env, userId, blockId) {
       position: owned.position
     }
   });
+}
+
+async function updateBlockStarred(request, env, userId, blockId) {
+  await ensureBlockSchema(env);
+  const body = await parseJson(request);
+  if (!body || !Object.prototype.hasOwnProperty.call(body, "starred")) {
+    throw new HttpError(400, "缺少 starred");
+  }
+  const starred = body.starred === true || body.starred === 1 ? 1 : 0;
+  const owned = await env.DB.prepare(
+    "SELECT id FROM blocks WHERE id = ? AND user_id = ?"
+  ).bind(blockId, userId).first();
+  if (!owned) throw new HttpError(404, "不存在或无权限");
+  await env.DB.prepare(
+    "UPDATE blocks SET starred = ? WHERE id = ? AND user_id = ?"
+  ).bind(starred, blockId, userId).run();
+  return json({ block: { id: blockId, starred } });
 }
 
 async function deleteBlock(env, userId, blockId) {

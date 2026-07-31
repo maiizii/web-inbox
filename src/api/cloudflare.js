@@ -66,6 +66,16 @@ export async function apiUpdateBlock(id, { content, format }) {
   if (!b) throw new Error("更新失败");
   return b;
 }
+export async function apiSetBlockStarred(id, starred) {
+  const raw = await apiFetch(`/api/blocks/${id}/starred`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ starred: !!starred })
+  });
+  const b = normBlock(raw);
+  if (!b || b.id !== id) throw new Error("收藏状态更新失败");
+  return b;
+}
 export async function apiDeleteBlock(id) {
   return apiFetch(`/api/blocks/${id}`, { method: "DELETE" });
 }

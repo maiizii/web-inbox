@@ -1,6 +1,6 @@
 // src/components/blocks/BlockEditorAuto.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Undo2, Redo2, ArrowLeft, Eye, EyeOff, FileText, FileCode2 } from "lucide-react";
+import { Undo2, Redo2, ArrowLeft, Eye, EyeOff, FileText, FileCode2, Star } from "lucide-react";
 import { apiUploadImage } from "../../api/cloudflare.js";
 import { useDebouncedCallback } from "../../hooks/useDebouncedCallback.js";
 import { useToast } from "../../hooks/useToast.jsx";
@@ -41,6 +41,8 @@ export default function BlockEditorAuto({
   onChange,
   onDelete,
   onImmediateSave,
+  onToggleStarred,
+  starUpdating = false,
   safeUpdateFallback,
   onBackToList,
   searchQuery = ""
@@ -133,6 +135,7 @@ export default function BlockEditorAuto({
   const dirty = !!block && (
     content !== lastPersisted.current.content || editorMode !== lastPersisted.current.format
   );
+  const isStarred = block?.starred === true || block?.starred === 1;
   const derivedTitle =
     (block?.content || "").split("\n")[0].slice(0, 64) || "(空)";
   const hist = historyStoreRef.current.get(block?.id) || null;
@@ -888,6 +891,17 @@ export default function BlockEditorAuto({
             <span>MD</span>
           </button>
         </div>
+        <button
+          type="button"
+          className={`block-star-toggle ${isStarred ? "active" : ""}`}
+          onClick={() => block && onToggleStarred?.(block.id)}
+          disabled={!block || !!block.optimistic || starUpdating}
+          aria-pressed={isStarred}
+          aria-label={isStarred ? "取消收藏" : "收藏"}
+          title={isStarred ? "取消收藏" : "收藏"}
+        >
+          <Star size={16} fill={isStarred ? "currentColor" : "none"} />
+        </button>
       </div>
 
       <div className="flex items-center gap-2">

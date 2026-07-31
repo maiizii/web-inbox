@@ -405,6 +405,19 @@ a:hover{color:var(--color-primary-hover);}
   box-shadow:0 1px 3px rgba(15,23,42,.12);
 }
 .dark .editor-mode-switch button.active{color:#c7d2fe;background:#263449;}
+.block-star-toggle{
+  flex:0 0 32px;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);
+  color:var(--color-text-fade);cursor:pointer;transition:color var(--transition-fast),
+    border-color var(--transition-fast),background var(--transition-fast),box-shadow var(--transition-fast);
+}
+.block-star-toggle:hover:not(:disabled){color:#d97706;border-color:#fbbf24;background:#fffbeb;}
+.block-star-toggle.active{color:#d97706;border-color:#fbbf24;background:#fffbeb;box-shadow:0 1px 3px rgba(146,64,14,.14);}
+.block-star-toggle:focus-visible{outline:2px solid rgba(245,158,11,.55);outline-offset:2px;}
+.block-star-toggle:disabled{opacity:.55;cursor:wait;}
+.dark .block-star-toggle.active,.dark .block-star-toggle:hover:not(:disabled){
+  color:#fbbf24;border-color:#92400e;background:#422006;
+}
 
 .md-toolbar{
   flex:0 0 38px;min-width:0;display:flex;align-items:center;gap:2px;

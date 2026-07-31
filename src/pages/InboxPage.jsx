@@ -4,6 +4,7 @@ import {
   apiListBlocks,
   apiCreateBlock,
   apiUpdateBlock,
+  apiSetBlockStarred,
   apiDeleteBlock,
   apiReorderBlocks
 } from "../api/cloudflare.js";
@@ -39,6 +40,7 @@ export default function InboxPage() {
   const [draggingId, setDraggingId] = useState(null);
   const [manualOrder, setManualOrder] = useState(null);
   const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
+  const [starUpdatingIds, setStarUpdatingIds] = useState(() => new Set());
 
   // —— 移动端“列表/编辑”两屏
   const [isMobile, setIsMobile] = useState(() =>
@@ -123,6 +125,7 @@ export default function InboxPage() {
       id: "tmp-" + Date.now(),
       content: "",
       format: "text",
+      starred: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       position: (blocks[blocks.length - 1]?.position || blocks.length) + 1,
@@ -171,6 +174,27 @@ export default function InboxPage() {
     } catch (e) {
       toast.push(e.message || "删除失败", { type: "error" });
       setBlocks(snapshot);
+    }
+  }
+
+  async function toggleStarred(id) {
+    const current = blocks.find(block => block.id === id);
+    if (!current || current.optimistic || starUpdatingIds.has(id)) return;
+    const next = !(current.starred === true || current.starred === 1);
+    setStarUpdatingIds(previous => new Set(previous).add(id));
+    optimisticChange(id, { starred: next ? 1 : 0 });
+    try {
+      const result = await apiSetBlockStarred(id, next);
+      optimisticChange(id, { starred: result.starred ? 1 : 0 });
+    } catch (e) {
+      optimisticChange(id, { starred: current.starred ? 1 : 0 });
+      toast.push(e.message || "收藏状态更新失败", { type: "error" });
+    } finally {
+      setStarUpdatingIds(previous => {
+        const updated = new Set(previous);
+        updated.delete(id);
+        return updated;
+      });
     }
   }
 
@@ -257,6 +281,8 @@ export default function InboxPage() {
               onChange={optimisticChange}
               onDelete={deleteBlock}
               onImmediateSave={persistUpdate}
+              onToggleStarred={toggleStarred}
+              starUpdating={starUpdatingIds.has(selected?.id)}
               searchQuery={q}
               onBackToList={() => setMobileStage("list")}
             />
@@ -284,6 +310,8 @@ export default function InboxPage() {
               onChange={optimisticChange}
               onDelete={deleteBlock}
               onImmediateSave={persistUpdate}
+              onToggleStarred={toggleStarred}
+              starUpdating={starUpdatingIds.has(selected?.id)}
               searchQuery={q}
             />
           </div>
