@@ -1,9 +1,12 @@
 // src/components/blocks/BlockEditorAuto.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Undo2, Redo2, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { Undo2, Redo2, ArrowLeft, Eye, EyeOff, FileText, FileCode2 } from "lucide-react";
 import { apiUploadImage } from "../../api/cloudflare.js";
 import { useDebouncedCallback } from "../../hooks/useDebouncedCallback.js";
 import { useToast } from "../../hooks/useToast.jsx";
+import { applyMarkdownCommand } from "../../lib/markdownEditing.js";
+import MarkdownPreview from "./MarkdownPreview.jsx";
+import MarkdownToolbar from "./MarkdownToolbar.jsx";
 
 const MAX_HISTORY = 200;
 const HISTORY_GROUP_MS = 800;
@@ -83,7 +86,11 @@ export default function BlockEditorAuto({
   const [draggingDivider, setDraggingDivider] = useState(false);
   const [lineNumbers, setLineNumbers] = useState("1");
   const [previewHtml, setPreviewHtml] = useState("");
+  const [previewHeadings, setPreviewHeadings] = useState([]);
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
+  const [editorMode, setEditorMode] = useState(() =>
+    localStorage.getItem("editorContentMode") === "markdown" ? "markdown" : "text"
+  );
   const [wrapEnabled, setWrapEnabled] = useState(() => {
     if (typeof window === "undefined") return true;
     const stored = localStorage.getItem("editorWrapEnabled");
@@ -100,6 +107,9 @@ export default function BlockEditorAuto({
   const editorScrollRef = useRef(null);
   const previewScrollRef = useRef(null);
   const textareaRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const markdownRendererRef = useRef(null);
+  const previewRevisionRef = useRef(0);
   const lineNumbersInnerRef = useRef(null);
 
   // 编辑框高亮覆盖层
@@ -158,8 +168,23 @@ export default function BlockEditorAuto({
     out += makeHighlightsFromRaw(raw.slice(last), kw);
     return out.replace(/\r\n/g, "\n").replace(/\n/g, "<br/>");
   }
-  function updatePreview(txt, kw) {
+  function updatePreview(txt, kw, mode = editorMode) {
+    const revision = ++previewRevisionRef.current;
+    if (mode === "markdown") {
+      if (!markdownRendererRef.current) {
+        markdownRendererRef.current = import("../../lib/markdown.js");
+      }
+      void markdownRendererRef.current.then(({ renderMarkdownDocument }) => {
+        if (previewRevisionRef.current !== revision) return;
+        const rendered = renderMarkdownDocument(txt, kw);
+        setPreviewHtml(rendered.html);
+        setPreviewHeadings(rendered.headings);
+        requestAnimationFrame(detectOverflow);
+      });
+      return;
+    }
     setPreviewHtml(renderPlainWithImages(txt, kw));
+    setPreviewHeadings([]);
   }
 
   // 历史
@@ -329,7 +354,12 @@ export default function BlockEditorAuto({
       detectOverflow();
       syncHighlightsMetrics();
     });
-  }, [content, searchQuery]);
+  }, [content, searchQuery, editorMode]);
+
+  useEffect(() => {
+    localStorage.setItem("editorContentMode", editorMode);
+    requestAnimationFrame(detectOverflow);
+  }, [editorMode]);
 
   useEffect(() => {
     const key =
@@ -645,6 +675,7 @@ export default function BlockEditorAuto({
   }
   function handleKeyDown(e) {
     handleUndoRedoKey(e);
+    handleMarkdownShortcut(e);
     handleIndentKey(e);
   }
 
@@ -752,6 +783,33 @@ export default function BlockEditorAuto({
     detectOverflow();
   }
 
+  function applyMarkdownFormat(command, option) {
+    if (editorMode !== "markdown") return;
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? content.length;
+    const end = textarea?.selectionEnd ?? start;
+    const result = applyMarkdownCommand(content, start, end, command, option);
+    if (result.content !== content) handleContentChange(result.content);
+    requestAnimationFrame(() => {
+      const target = textareaRef.current;
+      if (!target) return;
+      target.focus();
+      target.setSelectionRange(result.start, result.end);
+    });
+  }
+
+  function handleMarkdownShortcut(e) {
+    if (editorMode !== "markdown" || (!e.ctrlKey && !e.metaKey)) return;
+    const command = {
+      b: "bold",
+      i: "italic",
+      e: "inlineCode"
+    }[e.key.toLowerCase()];
+    if (!command) return;
+    e.preventDefault();
+    applyMarkdownFormat(command);
+  }
+
   // 顶部工具条
   const TopBar = (
     <div
@@ -781,6 +839,26 @@ export default function BlockEditorAuto({
             {derivedTitle}
           </div>
         )}
+        <div className="editor-mode-switch" role="group" aria-label="编辑模式">
+          <button
+            type="button"
+            className={editorMode === "text" ? "active" : ""}
+            onClick={() => setEditorMode("text")}
+            title="纯文本模式"
+          >
+            <FileText size={14} />
+            <span>文本</span>
+          </button>
+          <button
+            type="button"
+            className={editorMode === "markdown" ? "active" : ""}
+            onClick={() => setEditorMode("markdown")}
+            title="Markdown 模式"
+          >
+            <FileCode2 size={14} />
+            <span>MD</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -925,6 +1003,26 @@ export default function BlockEditorAuto({
   const disabledByCreation = !!(
     block.optimistic && String(block.id).startsWith("tmp-")
   );
+  const MarkdownTools = editorMode === "markdown" ? (
+    <>
+      <MarkdownToolbar
+        onCommand={applyMarkdownFormat}
+        onPickImage={() => imageInputRef.current?.click()}
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={async (event) => {
+          const files = [...(event.target.files || [])];
+          event.target.value = "";
+          for (const file of files) await uploadOne(file);
+        }}
+      />
+    </>
+  ) : null;
 
   // —— 移动端：单屏
   if (isMobile) {
@@ -936,6 +1034,7 @@ export default function BlockEditorAuto({
         onDragOver={(e) => e.preventDefault()}
       >
         {TopBar}
+        {mobileView === "edit" ? MarkdownTools : null}
         {mobileView === "edit" ? (
           <div
             className="editor-pane rounded-md"
@@ -1008,22 +1107,32 @@ export default function BlockEditorAuto({
             className="preview-pane rounded-md"
             style={{ flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column" }}
           >
-            <div
-              ref={previewScrollRef}
-              className="preview-scroll custom-scroll"
-              style={{
-                flex: "1 1 0",
-                minHeight: 0,
-                overflowX: "hidden",
-                overflowY: previewCanScroll ? "auto" : "hidden",
-                background: "var(--color-surface)"
-              }}
-            >
-              <div
-                className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
+            {editorMode === "markdown" ? (
+              <MarkdownPreview
+                html={previewHtml}
+                headings={previewHeadings}
+                scrollerRef={previewScrollRef}
+                canScroll={previewCanScroll}
+                mobile
               />
-            </div>
+            ) : (
+              <div
+                ref={previewScrollRef}
+                className="preview-scroll custom-scroll"
+                style={{
+                  flex: "1 1 0",
+                  minHeight: 0,
+                  overflowX: "hidden",
+                  overflowY: previewCanScroll ? "auto" : "hidden",
+                  background: "var(--color-surface)"
+                }}
+              >
+                <div
+                  className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
+                  dangerouslySetInnerHTML={{ __html: previewHtml }}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1039,6 +1148,7 @@ export default function BlockEditorAuto({
       onDragOver={(e) => e.preventDefault()}
     >
       {TopBar}
+      {MarkdownTools}
       <div
         ref={splitContainerRef}
         className={`editor-split-root flex-1 min-h-0 flex ${
@@ -1127,24 +1237,33 @@ export default function BlockEditorAuto({
               title="拖动调整比例，双击恢复 50%"
             />
             <div className="preview-pane rounded-md" style={{ flexBasis: `${(1 - splitRatio) * 100}%` }}>
-              <div
-                ref={previewScrollRef}
-                className="preview-scroll custom-scroll"
-                style={{
-                  flex: "1 1 0",
-                  minHeight: 0,
-                  maxHeight: "100%",
-                  overflowX: "hidden",
-                  overflowY: previewCanScroll ? "auto" : "hidden",
-                  background: "var(--color-surface)"
-                }}
-              >
-                <div
-                  className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
-                  style={{ maxWidth: "100%" }}
-                  dangerouslySetInnerHTML={{ __html: previewHtml }}
+              {editorMode === "markdown" ? (
+                <MarkdownPreview
+                  html={previewHtml}
+                  headings={previewHeadings}
+                  scrollerRef={previewScrollRef}
+                  canScroll={previewCanScroll}
                 />
-              </div>
+              ) : (
+                <div
+                  ref={previewScrollRef}
+                  className="preview-scroll custom-scroll"
+                  style={{
+                    flex: "1 1 0",
+                    minHeight: 0,
+                    maxHeight: "100%",
+                    overflowX: "hidden",
+                    overflowY: previewCanScroll ? "auto" : "hidden",
+                    background: "var(--color-surface)"
+                  }}
+                >
+                  <div
+                    className="preview-content font-mono text-sm leading-[1.5] whitespace-pre-wrap break-words select-text"
+                    style={{ maxWidth: "100%" }}
+                    dangerouslySetInnerHTML={{ __html: previewHtml }}
+                  />
+                </div>
+              )}
             </div>
           </>
         )}
