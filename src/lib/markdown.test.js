@@ -97,3 +97,27 @@ test("sanitizes unsafe raw HTML while keeping safe details blocks", () => {
   assert.match(rendered.html, /<details open="">/);
   assert.doesNotMatch(rendered.html, /<script/i);
 });
+
+test("supports a record title before front matter", () => {
+  const rendered = renderMarkdownDocument(`MD案例
+---
+title: 欢迎使用 Inkstone
+tags: [入门, Inkstone]
+aliases:
+  - 使用指南
+---
+
+# 欢迎使用 Inkstone`);
+  const root = document.createElement("div");
+  root.innerHTML = rendered.html;
+
+  assert.equal(root.querySelectorAll(".frontmatter-row").length, 3);
+  assert.deepEqual(
+    [...root.querySelectorAll(".frontmatter-chip")].map((chip) => chip.textContent),
+    ["入门", "Inkstone", "使用指南"]
+  );
+  assert.equal(root.querySelector(".frontmatter-properties")?.open, true);
+  assert.equal(root.querySelector("h1")?.textContent.trim(), "欢迎使用 Inkstone");
+  assert.equal(root.querySelector("hr"), null);
+  assert.doesNotMatch(root.textContent, /MD案例/);
+});

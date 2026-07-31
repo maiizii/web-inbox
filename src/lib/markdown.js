@@ -49,13 +49,20 @@ function slugify(value) {
 
 function parseFrontMatter(source) {
   const text = source.startsWith("\uFEFF") ? source.slice(1) : source;
-  if (!/^---[ \t]*(?:\r?\n|$)/.test(text)) {
-    return { body: text, data: null, errors: [], lineOffset: 0 };
-  }
   const lines = text.split(/\r?\n/);
+  let opening = 0;
+  if (!/^---[ \t]*$/.test(lines[0] || "")) {
+    const leadingTitle = (lines[0] || "").trim();
+    const plainRecordTitle = leadingTitle && !/^(?:#{1,6}\s|[-+*>]\s|`{3,}|~{3,}|:{3,})/.test(leadingTitle);
+    const candidate = lines[1]?.trim() ? 1 : 2;
+    if (!plainRecordTitle || candidate >= lines.length || !/^---[ \t]*$/.test(lines[candidate])) {
+      return { body: text, data: null, errors: [], lineOffset: 0 };
+    }
+    opening = candidate;
+  }
   let closing = -1;
-  let size = lines[0].length;
-  for (let index = 1; index < lines.length; index++) {
+  let size = lines[opening].length;
+  for (let index = opening + 1; index < lines.length; index++) {
     size += lines[index].length + 1;
     if (size > 64 * 1024) {
       return { body: text, data: null, errors: ["Front Matter 超过 64 KiB 安全上限"], lineOffset: 0 };
@@ -66,7 +73,7 @@ function parseFrontMatter(source) {
     }
   }
   if (closing < 0) return { body: text, data: null, errors: [], lineOffset: 0 };
-  const raw = lines.slice(1, closing).join("\n");
+  const raw = lines.slice(opening + 1, closing).join("\n");
   try {
     const document = YAML.parseDocument(raw, { prettyErrors: false, uniqueKeys: true });
     const errors = document.errors.map((error) => error.message);
@@ -105,7 +112,7 @@ function renderFrontMatter(parsed) {
     return `<div class="frontmatter-row"><dt>${escapeHtml(key)}</dt><dd>${shown}</dd></div>`;
   }).join("");
   return rows
-    ? `<details class="frontmatter-properties"><summary>属性</summary><dl>${rows}</dl></details>`
+    ? `<details class="frontmatter-properties" open><summary>属性</summary><dl>${rows}</dl></details>`
     : "";
 }
 
