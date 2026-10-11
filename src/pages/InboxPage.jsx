@@ -104,19 +104,10 @@ export default function InboxPage() {
 
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
+    // 仅做本地"最近编辑置顶"的视觉排序，不再对全列表发起 reorder（避免每次保存产生 N 行 D1 写入）
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
     setLastEditedBlockId(id);
     setManualOrder(null);
-
-    setBlocks(prev => {
-      const latestBlock = prev.find(b => b.id === id);
-      if (!latestBlock) return prev;
-      const rest = prev.filter(b => b.id !== id);
-      const newList = [latestBlock, ...rest];
-      apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
-      return newList;
-    });
-
     return real;
   }
 
@@ -128,29 +119,18 @@ export default function InboxPage() {
       starred: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      position: (blocks[blocks.length - 1]?.position || blocks.length) + 1,
+      position: 0,
       optimistic: true
     };
     setBlocks(prev => [optimistic, ...prev]);
     setSelectedId(optimistic.id);
     try {
       const real = await apiCreateBlock("", "text");
-      setBlocks(prev =>
-        prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b))
-      );
+      // 后端新建固定 position=0（置顶），前端仅本地浮顶，不再全量 reorder
+      setBlocks(prev => prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b)));
       setSelectedId(real.id);
       setLastEditedBlockId(real.id);
       setManualOrder(null);
-
-      setBlocks(prev => {
-        const latestBlock = prev.find(b => b.id === real.id);
-        if (!latestBlock) return prev;
-        const rest = prev.filter(b => b.id !== real.id);
-        const newList = [latestBlock, ...rest];
-        apiReorderBlocks(newList.map((b, i) => ({ id: b.id, position: i + 1 })));
-        return newList;
-      });
-
       if (isMobile) setMobileStage("editor");
     } catch (e) {
       toast.push(e.message || "创建失败", { type: "error" });

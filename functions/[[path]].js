@@ -254,18 +254,16 @@ async function createBlock(request, env, userId) {
   const format = normalizeBlockFormat(body.format);
   const starred = body.starred === true || body.starred === 1 ? 1 : 0;
 
-  const row = await env.DB.prepare(
-    "SELECT MAX(position) AS m FROM blocks WHERE user_id = ?"
-  ).bind(userId).first();
-  const nextPos = (row?.m ?? 0) + 1;
-
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  // 新建固定 position=0：配合排序规则 position ASC + updated_at DESC，最新笔记自然置顶，
+  // 无需再对全列表执行 reorder（省去 N 行 D1 写入）
+  const position = 0;
   await env.DB.prepare(
     "INSERT INTO blocks (id, user_id, content, format, starred, created_at, updated_at, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(id, userId, content, format, starred, now, now, nextPos).run();
+  ).bind(id, userId, content, format, starred, now, now, position).run();
 
-  return json({ block: { id, content, format, starred, created_at: now, updated_at: now, position: nextPos } }, 201);
+  return json({ block: { id, content, format, starred, created_at: now, updated_at: now, position } }, 201);
 }
 
 async function updateBlock(request, env, userId, blockId) {
@@ -279,13 +277,27 @@ async function updateBlock(request, env, userId, blockId) {
   if (typeof content !== "string") content = String(content);
 
   const owned = await env.DB.prepare(
-    "SELECT id, format, created_at, position FROM blocks WHERE id = ? AND user_id = ?"
+    "SELECT id, content, format, created_at, updated_at, position FROM blocks WHERE id = ? AND user_id = ?"
   ).bind(blockId, userId).first();
   if (!owned) throw new HttpError(404, "不存在或无权限");
-  const now = new Date().toISOString();
   const format = Object.prototype.hasOwnProperty.call(body, "format")
     ? normalizeBlockFormat(body.format)
     : normalizeBlockFormat(owned.format);
+
+  // 内容与格式均未变化时跳过写入，避免自动保存重复消耗 D1 行写入
+  if (owned.content === content && normalizeBlockFormat(owned.format) === format) {
+    return json({
+      block: {
+        id: blockId,
+        content,
+        format,
+        created_at: owned.created_at,
+        updated_at: owned.updated_at ?? owned.created_at,
+        position: owned.position
+      }
+    });
+  }
+  const now = new Date().toISOString();
   await env.DB.prepare(
     "UPDATE blocks SET content = ?, format = ?, updated_at = ? WHERE id = ?"
   ).bind(content, format, now, blockId).run();
@@ -336,10 +348,24 @@ async function reorderBlocks(request, env, userId) {
       throw new HttpError(400, "order 元素格式错误");
     }
   }
+
+  // 只更新 position 真正发生变化的行，并用 batch 一次往返执行，大幅节省 D1 行写入
+  const current = await env.DB.prepare(
+    "SELECT id, position FROM blocks WHERE user_id = ?"
+  ).bind(userId).all();
+  const positionMap = new Map((current.results || []).map(row => [row.id, row.position]));
+
+  const stmts = [];
   for (const item of body.order) {
-    await env.DB.prepare(
-      "UPDATE blocks SET position = ? WHERE id = ? AND user_id = ?"
-    ).bind(item.position, item.id, userId).run();
+    if (positionMap.get(item.id) === item.position) continue;
+    stmts.push(
+      env.DB.prepare(
+        "UPDATE blocks SET position = ? WHERE id = ? AND user_id = ?"
+      ).bind(item.position, item.id, userId)
+    );
+  }
+  if (stmts.length > 0) {
+    await env.DB.batch(stmts);
   }
   return listBlocks(env, userId);
 }
