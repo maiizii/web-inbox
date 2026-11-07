@@ -14,7 +14,8 @@ function normBlock(r) {
 }
 
 /* Auth */
-export async function apiRegister(email, password, name, inviteCode) {
+// 签名按注册表单的字段顺序：inviteCode 第三个参数；name 表单里没有，缺省空串（后端存 null）
+export async function apiRegister(email, password, inviteCode, name = "") {
   return apiFetch("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
