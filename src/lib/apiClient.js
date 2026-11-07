@@ -9,6 +9,8 @@
 //  - 保留性能计时 & 事件广播
 //  - error 时不会返回 data，调用方需 try/catch
 
+import { notifySessionExpired } from "./sessionEvents.js";
+
 const listeners = new Set();
 
 export function onApiEvent(fn) {
@@ -69,6 +71,12 @@ export async function apiFetch(path, options = {}) {
       error.status = res.status;
       // 兼容调用方需要查看后端 body
       error.data = data ?? text;
+      // 业务接口（非 /api/auth/*）返回 401 说明会话已失效：全局广播，
+      // 由 SessionExpiredModal 立即弹窗提示重新登录。
+      // /api/auth/* 的 401（如登录密码错误）属于业务错误，不广播。
+      if (res.status === 401 && !path.startsWith("/api/auth/")) {
+        notifySessionExpired();
+      }
       throw error;
     }
 

@@ -7,6 +7,7 @@ import { ToastProvider } from "./hooks/useToast.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import InboxPage from "./pages/InboxPage.jsx";
 import Layout from "./components/layout/Layout.jsx";
+import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 
 function PrivateRoute({ children }) {
   const { user, loaded } = useAuth();
@@ -49,6 +50,8 @@ export default function App() {
                 />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              {/* 登录态失效的全局弹窗：任意业务接口 401 时立即提示，可直接就地重新登录 */}
+              <SessionExpiredModal />
             </BrowserRouter>
           </div>
         </ToastProvider>

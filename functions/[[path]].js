@@ -4,6 +4,7 @@
 //  - Invite code required (env.INVITE_CODE)
 //  - Blocks CRUD + manual ordering (position) + reorder endpoint
 //  - Ordering rule: position ASC, updated_at DESC, created_at DESC
+//    (新建与内容保存都会把 position 归零，最近编辑/新建的记录因此自动置顶)
 //  - Image upload
 //  - PBKDF2 password hashing
 
@@ -277,7 +278,7 @@ async function updateBlock(request, env, userId, blockId) {
   if (typeof content !== "string") content = String(content);
 
   const owned = await env.DB.prepare(
-    "SELECT id, content, format, created_at, updated_at, position FROM blocks WHERE id = ? AND user_id = ?"
+    "SELECT id, content, format, starred, created_at, updated_at, position FROM blocks WHERE id = ? AND user_id = ?"
   ).bind(blockId, userId).first();
   if (!owned) throw new HttpError(404, "不存在或无权限");
   const format = Object.prototype.hasOwnProperty.call(body, "format")
@@ -291,6 +292,7 @@ async function updateBlock(request, env, userId, blockId) {
         id: blockId,
         content,
         format,
+        starred: owned.starred,
         created_at: owned.created_at,
         updated_at: owned.updated_at ?? owned.created_at,
         position: owned.position
@@ -298,8 +300,11 @@ async function updateBlock(request, env, userId, blockId) {
     });
   }
   const now = new Date().toISOString();
+  // 内容变化时把 position 一并归零（仍是同一行写入，无额外开销）：
+  // 配合 "position ASC + updated_at DESC" 排序规则，最近编辑的记录稳定置顶且跨刷新持久，
+  // 前端无需再发起全量 reorder
   await env.DB.prepare(
-    "UPDATE blocks SET content = ?, format = ?, updated_at = ? WHERE id = ?"
+    "UPDATE blocks SET content = ?, format = ?, updated_at = ?, position = 0 WHERE id = ?"
   ).bind(content, format, now, blockId).run();
 
   return json({
@@ -307,9 +312,10 @@ async function updateBlock(request, env, userId, blockId) {
       id: blockId,
       content,
       format,
+      starred: owned.starred,
       created_at: owned.created_at,
       updated_at: now,
-      position: owned.position
+      position: 0
     }
   });
 }

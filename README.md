@@ -154,9 +154,9 @@
   - POST /api/auth/logout：清除会话
   - GET  /api/auth/me：返回当前 user
 - Blocks
-  - GET  /api/blocks：当前用户列表；服务端排序优先 position ASC，其次 updated_at DESC，再 created_at DESC
+  - GET  /api/blocks：当前用户列表；服务端排序优先 position ASC，其次 updated_at DESC，再 created_at DESC。新建与内容保存都会把 position 归零，最近编辑/新建的记录因此自动置顶（跨刷新成立）
   - POST /api/blocks：{ content } → 新建
-  - PUT  /api/blocks/:id：{ content } → 更新
+  - PUT  /api/blocks/:id：{ content } → 更新（内容变化时 position 归零）
   - DELETE /api/blocks/:id：删除
   - POST /api/blocks/reorder：{ order: [{ id, position }, ...] }
 - Images

@@ -5,6 +5,7 @@ import { apiUploadImage } from "../../api/cloudflare.js";
 import { useDebouncedCallback } from "../../hooks/useDebouncedCallback.js";
 import { useToast } from "../../hooks/useToast.jsx";
 import { applyMarkdownCommand } from "../../lib/markdownEditing.js";
+import { onSessionRestored } from "../../lib/sessionEvents.js";
 import MarkdownPreview from "./MarkdownPreview.jsx";
 import MarkdownToolbar from "./MarkdownToolbar.jsx";
 
@@ -413,6 +414,14 @@ export default function BlockEditorAuto({
   useEffect(() => {
     if (dirty) debouncedSave();
   }, [content, editorMode, debouncedSave, dirty]);
+
+  // 登录态失效弹窗中重新登录成功后，立即重试保存。
+  // doSave 内部有 dirty / hasUserEdited 检查，无待保存内容时是空操作。
+  const doSaveRef = useRef(doSave);
+  useEffect(() => {
+    doSaveRef.current = doSave;
+  });
+  useEffect(() => onSessionRestored(() => doSaveRef.current()), []);
   function onBlur() {
     flushSave();
   }
@@ -1017,7 +1026,7 @@ export default function BlockEditorAuto({
 
         <div className="text-slate-400 dark:text-slate-300 select-none min-w-[64px] text-right">
           {saving ? "保存中" : error ? (
-            <button onClick={doSave} className="text-red-500 hover:underline">
+            <button onClick={doSave} className="text-red-500 hover:underline" title={error}>
               重试
             </button>
           ) : dirty ? "待保存" : "已保存"}

@@ -12,23 +12,20 @@ import { useToast } from "../hooks/useToast.jsx";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import BlockEditorAuto from "../components/blocks/BlockEditorAuto.jsx";
 
-function sortBlocksWithLatestOnTop(blocks, latestBlockId) {
-  if (!latestBlockId) return blocks;
-  const latestBlock = blocks.find(b => b.id === latestBlockId);
-  if (!latestBlock) return blocks;
-  const latestEditTime = Math.max(
-    ...blocks.map(b =>
-      new Date(b.updated_at || b.created_at || "1970-01-01").getTime()
-    )
+// 与后端 listBlocks 完全一致的排序规则：position ASC, updated_at DESC, created_at DESC。
+// 新建与保存都会把 position 归零（见 functions/[[path]].js），因此最近编辑/新建的记录
+// 稳定置顶且跨刷新成立；不再使用“仅把最近一条临时浮顶”的 hack
+// （那条 hack 在编辑其他记录、拖拽或刷新后会让记录掉回旧 position 的位置）。
+function compareBlocks(a, b) {
+  const pa = a.position ?? 0;
+  const pb = b.position ?? 0;
+  if (pa !== pb) return pa - pb;
+  const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+  const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+  if (ta !== tb) return tb - ta;
+  return (
+    new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
   );
-  const blockEditTime = new Date(
-    latestBlock.updated_at || latestBlock.created_at || "1970-01-01"
-  ).getTime();
-  if (blockEditTime === latestEditTime) {
-    const rest = blocks.filter(b => b.id !== latestBlockId);
-    return [latestBlock, ...rest];
-  }
-  return blocks;
 }
 
 export default function InboxPage() {
@@ -39,7 +36,6 @@ export default function InboxPage() {
   const [q, setQ] = useState("");
   const [draggingId, setDraggingId] = useState(null);
   const [manualOrder, setManualOrder] = useState(null);
-  const [lastEditedBlockId, setLastEditedBlockId] = useState(null);
   const [starUpdatingIds, setStarUpdatingIds] = useState(() => new Set());
 
   // —— 移动端“列表/编辑”两屏
@@ -87,11 +83,11 @@ export default function InboxPage() {
     let list = filteredBlocks;
     if (manualOrder && manualOrder.length === list.length) {
       list = manualOrder.map(id => list.find(b => b.id === id)).filter(Boolean);
-    } else if (lastEditedBlockId) {
-      list = sortBlocksWithLatestOnTop(list, lastEditedBlockId);
+    } else {
+      list = [...list].sort(compareBlocks);
     }
     return list;
-  }, [filteredBlocks, manualOrder, lastEditedBlockId]);
+  }, [filteredBlocks, manualOrder]);
 
   const selected = useMemo(
     () => blocks.find(b => b.id === selectedId) || null,
@@ -104,9 +100,9 @@ export default function InboxPage() {
 
   async function persistUpdate(id, payload) {
     const real = await apiUpdateBlock(id, payload);
-    // 仅做本地"最近编辑置顶"的视觉排序，不再对全列表发起 reorder（避免每次保存产生 N 行 D1 写入）
+    // 服务端在内容变化时已把 position 归零（real.position = 0），
+    // 本地按真实排序规则重排后，最近编辑的记录稳定置顶，刷新后顺序不变
     setBlocks(prev => prev.map(b => (b.id === id ? { ...b, ...real } : b)));
-    setLastEditedBlockId(id);
     setManualOrder(null);
     return real;
   }
@@ -126,10 +122,9 @@ export default function InboxPage() {
     setSelectedId(optimistic.id);
     try {
       const real = await apiCreateBlock("", "text");
-      // 后端新建固定 position=0（置顶），前端仅本地浮顶，不再全量 reorder
+      // 后端新建固定 position=0（置顶），前端按真实排序规则重排即可
       setBlocks(prev => prev.map(b => (b.id === optimistic.id ? { ...b, ...real, optimistic: false } : b)));
       setSelectedId(real.id);
-      setLastEditedBlockId(real.id);
       setManualOrder(null);
       if (isMobile) setMobileStage("editor");
     } catch (e) {
@@ -149,7 +144,6 @@ export default function InboxPage() {
         setSelectedId(remain.length ? remain[0].id : null);
         if (isMobile) setMobileStage("list");
       }
-      if (lastEditedBlockId === id) setLastEditedBlockId(null);
       if (manualOrder) setManualOrder(manualOrder.filter(i => i !== id));
     } catch (e) {
       toast.push(e.message || "删除失败", { type: "error" });
@@ -213,7 +207,6 @@ export default function InboxPage() {
       const [item] = list.splice(from, 1);
       list.splice(to, 0, item);
       setManualOrder(list.map(b => b.id));
-      setLastEditedBlockId(null);
       return list;
     });
   }
